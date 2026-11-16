@@ -9,7 +9,7 @@ struct ContentView: View {
             if store.data.hasOnboarded {
                 ReadLabHomeView(store: store)
             } else {
-                ReadingSupportOnboarding(store: store)
+                ReadLabOnboarding(store: store)
             }
         }
         .environment(\.useDyslexicFont, store.data.preferences.useDyslexicFont)

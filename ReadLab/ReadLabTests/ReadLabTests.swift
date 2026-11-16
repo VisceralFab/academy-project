@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 import UIKit
-@testable import ReaddingSuport
+@testable import ReadLab
 
 @MainActor
-struct ReaddingSuportTests {
+struct ReadLabTests {
     @Test func difficultyAdaptsWithoutLeavingBounds() {
         var difficulty = AdaptiveDifficulty()
         let firstChange = difficulty.record(success: true)

@@ -49,19 +49,31 @@ extension View {
     }
 }
 
+/// A closed Catmull–Rom contour keeps tangents continuous while its waves travel around the edge.
 struct SoftBlob: Shape {
-    var phase: CGFloat
-    var animatableData: CGFloat { get { phase } set { phase = newValue } }
+    var phase: Double
+    var animatableData: Double { get { phase } set { phase = newValue } }
+
     func path(in rect: CGRect) -> Path {
-        let w = rect.width, h = rect.height
-        let drift = phase * 0.07
-        return Path { p in
-            p.move(to: CGPoint(x: w * 0.46, y: 0))
-            p.addCurve(to: CGPoint(x: w, y: h * 0.49), control1: CGPoint(x: w * (0.83 + drift), y: -h * 0.06), control2: CGPoint(x: w * 1.08, y: h * 0.23))
-            p.addCurve(to: CGPoint(x: w * 0.54, y: h), control1: CGPoint(x: w * (0.93 - drift), y: h * 0.79), control2: CGPoint(x: w * 0.88, y: h * 1.05))
-            p.addCurve(to: CGPoint(x: 0, y: h * 0.53), control1: CGPoint(x: w * 0.18, y: h * (1.04 - drift)), control2: CGPoint(x: -w * 0.08, y: h * 0.81))
-            p.addCurve(to: CGPoint(x: w * 0.46, y: 0), control1: CGPoint(x: -w * 0.03, y: h * 0.2), control2: CGPoint(x: w * 0.16, y: h * (0.04 + drift)))
-            p.closeSubpath()
+        let count = 12
+        let points: [CGPoint] = (0..<count).map { index in
+            let angle = Double(index) * .pi * 2 / Double(count)
+            let radius = 0.46 * (1 + 0.13 * sin(angle * 3 + phase) + 0.07 * cos(angle * 2 - phase))
+            return CGPoint(x: rect.midX + cos(angle) * radius * rect.width,
+                           y: rect.midY + sin(angle) * radius * rect.height)
+        }
+        return Path { path in
+            path.move(to: points[0])
+            for index in 0..<count {
+                let previous = points[(index + count - 1) % count]
+                let current = points[index]
+                let next = points[(index + 1) % count]
+                let following = points[(index + 2) % count]
+                path.addCurve(to: next,
+                    control1: CGPoint(x: current.x + (next.x - previous.x) / 6, y: current.y + (next.y - previous.y) / 6),
+                    control2: CGPoint(x: next.x - (following.x - current.x) / 6, y: next.y - (following.y - current.y) / 6))
+            }
+            path.closeSubpath()
         }
     }
 }
@@ -69,44 +81,42 @@ struct SoftBlob: Shape {
 struct ReadLabPastelBackground: View {
     var path: ReadingPath? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var moving = false
-    private var upperColor: Color {
-        if let path { return ReadLabStyle.color(for: path) }
-        return ReadLabStyle.sand
-    }
-    private var lowerColor: Color {
-        if let path { return ReadLabStyle.color(for: path) }
-        return ReadLabStyle.sky
-    }
-    private var edgeColor: Color {
-        if let path { return ReadLabStyle.color(for: path) }
-        return ReadLabStyle.coral
-    }
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var start = Date()
+
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                ReadLabStyle.background
-                blob(upperColor, size: CGSize(width: geo.size.width * 0.62, height: geo.size.height * 0.94), angle: moving ? 12 : -12)
-                    .position(x: geo.size.width * 0.96, y: geo.size.height * 0.12)
-                blob(lowerColor, size: CGSize(width: geo.size.width * 0.64, height: geo.size.height * 0.70), angle: moving ? -10 : 8)
-                    .position(x: geo.size.width * 0.03, y: geo.size.height * 1.04)
-                blob(edgeColor, size: CGSize(width: geo.size.width * 0.60, height: geo.size.height * 0.72), angle: moving ? 10 : -8)
-                    .position(x: geo.size.width * 0.98, y: geo.size.height * 1.13)
+        GeometryReader { geometry in
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
+                let elapsed = reduceMotion ? 0 : timeline.date.timeIntervalSince(start)
+                let phase = elapsed * .pi * 2 / 8
+                let rotation = reduceMotion ? 0 : sin(elapsed * .pi * 2 / 14) * 18
+                let w = geometry.size.width
+                let h = geometry.size.height
+                ZStack {
+                    ReadLabStyle.background
+                    blob(color: path == nil ? ReadLabStyle.sand : ReadLabStyle.color(for: path!),
+                         width: w * 0.82, height: h * 1.02, phase: phase, rotation: rotation - 12)
+                        .position(x: w * 0.99, y: h * 0.10)
+                    blob(color: path == nil ? ReadLabStyle.coral : ReadLabStyle.color(for: path!),
+                         width: w * 1.10, height: h * 1.05, phase: phase + 2.1, rotation: -rotation + 16)
+                        .position(x: w * 0.04, y: h * 1.04)
+                    blob(color: path == nil ? ReadLabStyle.sky : ReadLabStyle.color(for: path!),
+                         width: w * 0.68, height: h * 0.80, phase: phase + 4.2, rotation: rotation * 0.8 - 8)
+                        .position(x: w * 1.01, y: h * 1.05)
+                }
+                .frame(width: w, height: h)
+                .clipped()
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .clipped()
         }
         .ignoresSafeArea()
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .onAppear { moving = !reduceMotion }
-        .onChange(of: reduceMotion) { _, value in moving = !value }
     }
-    private func blob(_ color: Color, size: CGSize, angle: Double) -> some View {
-        SoftBlob(phase: moving ? 1 : -1)
-            .fill(color)
-            .frame(width: size.width, height: size.height)
-            .rotationEffect(.degrees(reduceMotion ? 0 : angle))
-            .animation(reduceMotion ? nil : .easeInOut(duration: 22).repeatForever(autoreverses: true), value: moving)
+
+    private func blob(color: Color, width: CGFloat, height: CGFloat, phase: Double, rotation: Double) -> some View {
+        SoftBlob(phase: phase).fill(color)
+            .frame(width: width, height: height)
+            .rotationEffect(.degrees(rotation))
     }
 }
 

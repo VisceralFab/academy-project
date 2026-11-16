@@ -7,6 +7,7 @@ import Speech
 final class ReadLabSpeechService {
     private(set) var isListening = false
     private(set) var isPreparing = false
+    private(set) var isFinishing = false
     private(set) var transcript = ""
     private(set) var inputLevel: Float = 0
     var message: String?
@@ -126,6 +127,7 @@ final class ReadLabSpeechService {
 
     func finishListening() {
         guard isListening else { return }
+        isFinishing = true
         engine?.stop()
         request?.endAudio()
         isListening = false
@@ -146,6 +148,7 @@ final class ReadLabSpeechService {
         resultHandler = nil
         isListening = false
         isPreparing = false
+        isFinishing = false
         inputLevel = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ReadingSupportOnboarding: View {
+struct ReadLabOnboarding: View {
     @Bindable var store: ReadLabStore
     @State private var path: [Step] = []
     private enum Step: Hashable { case profile, learning, focus, summary }

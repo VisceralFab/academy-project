@@ -111,11 +111,16 @@ struct ReadLabExerciseView: View {
                 .readLabFont(21, weight: .light, rounded: false)
                 .multilineTextAlignment(.center)
             if session.path == .hearing {
-                Text(prompt.text)
-                    .readLabFont(compact ? 42 : 58, weight: .semibold)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(session.answeredCurrentItem ? Color(red: 0.22, green: 0.43, blue: 0.28) : ReadLabStyle.ink)
-                    .accessibilityIdentifier("readingPrompt")
+                Button { playPreview(prompt.text) } label: {
+                    Text(prompt.text)
+                        .readLabFont(compact ? 42 : 58, weight: .semibold)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(session.answeredCurrentItem ? Color(red: 0.22, green: 0.43, blue: 0.28) : ReadLabStyle.ink)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Listen to \(prompt.text)")
+                .accessibilityHint("Hear the word before reading it aloud")
+                .accessibilityIdentifier("readingPrompt")
                 WateringTreeView(listening: speech.isListening, success: session.answeredCurrentItem)
                     .frame(height: compact ? 210 : 250)
             } else {
@@ -138,22 +143,25 @@ struct ReadLabExerciseView: View {
         prompt.syllables.flatMap { $0.components(separatedBy: .whitespaces) }.filter { !$0.isEmpty }
     }
     private func syllableReader(compact: Bool) -> some View {
-        FlowingSyllables(spacing: compact ? 8 : 12) {
-            ForEach(Array(syllableParts.enumerated()), id: \.offset) { index, syllable in
-                let focused = Int(syllablePosition) == index
-                Text(syllable)
-                    .readLabFont((compact ? 35 : 48) + zoom * 25 + (focused ? 12 : 0), weight: .semibold)
-                    .padding(.horizontal, 10).padding(.vertical, 14)
-                    .background(session.answeredCurrentItem ? Color.green.opacity(0.18) : (focused ? ReadLabStyle.sky.opacity(0.5) : .clear), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(alignment: .bottom) {
-                        Capsule().fill(focused ? ReadLabStyle.ink : ReadLabStyle.ink.opacity(0.16)).frame(height: focused ? 4 : 2)
-                    }
-                    .onTapGesture { syllablePosition = Double(index) }
+        Button { playPreview(prompt.text) } label: {
+            FlowingSyllables(spacing: compact ? 8 : 12) {
+                ForEach(Array(syllableParts.enumerated()), id: \.offset) { index, syllable in
+                    let focused = Int(syllablePosition) == index
+                    Text(syllable)
+                        .readLabFont((compact ? 35 : 48) + zoom * 25 + (focused ? 12 : 0), weight: .semibold)
+                        .padding(.horizontal, 10).padding(.vertical, 14)
+                        .background(session.answeredCurrentItem ? Color.green.opacity(0.18) : (focused ? ReadLabStyle.sky.opacity(0.5) : .clear), in: RoundedRectangle(cornerRadius: 18))
+                        .overlay(alignment: .bottom) {
+                            Capsule().fill(focused ? ReadLabStyle.ink : ReadLabStyle.ink.opacity(0.16)).frame(height: focused ? 4 : 2)
+                        }
+                }
             }
+            .frame(minHeight: compact ? 180 : 240)
+            .contentShape(Rectangle())
         }
-        .frame(minHeight: compact ? 180 : 240)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(prompt.text)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Listen to \(prompt.text)")
+        .accessibilityHint("Hear the complete word or phrase")
         .accessibilityIdentifier("readingPrompt")
     }
 
@@ -180,7 +188,7 @@ struct ReadLabExerciseView: View {
                 if !speech.transcript.isEmpty { Text(speech.transcript).readLabFont(18, rounded: false) }
             }
         } else {
-            Text("Tap the speaker to listen, then the microphone to read aloud.")
+            Text("Tap the word to listen, then the microphone to read aloud.")
                 .readLabFont(18, rounded: false).multilineTextAlignment(.center)
         }
     }
@@ -218,10 +226,15 @@ struct ReadLabExerciseView: View {
                     .accessibilityAddTraits(.isHeader)
                 if !feedback.isEmpty { Text(feedback).readLabFont(18, weight: .medium).padding().background(ReadLabStyle.sand.opacity(0.5), in: RoundedRectangle(cornerRadius: 16)) }
                 ForEach(Array(story.sections[min(session.sectionIndex, story.sections.count - 1)].enumerated()), id: \.offset) { _, paragraph in
-                    Text(paragraph).readLabFont(24 + zoom * 22)
-                        .lineSpacing(12)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("storyParagraph")
+                    Button { playPreview(paragraph) } label: {
+                        Text(paragraph).readLabFont(24 + zoom * 22)
+                            .lineSpacing(12)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Listen to this paragraph")
+                    .accessibilityIdentifier("storyParagraph")
                 }
             }
         }
@@ -253,10 +266,6 @@ struct ReadLabExerciseView: View {
                 HStack(spacing: 14) {
                     Button("Previous", systemImage: "chevron.left") { moveSection(-1) }
                         .disabled(session.sectionIndex == 0).buttonStyle(.bordered).controlSize(.large)
-                    Button("Listen", systemImage: "speaker.wave.2.fill") {
-                        speech.cancel()
-                        speaker.speak(story.sections[session.sectionIndex].joined(separator: " "))
-                    }.buttonStyle(.bordered).controlSize(.large)
                 }
                 ReadLabActionButton(title: session.sectionIndex == story.sections.count - 1 ? "Story Questions" : "Next Section") { nextStoryStep() }
             } else {
@@ -266,33 +275,43 @@ struct ReadLabExerciseView: View {
                 ReadLabActionButton(title: session.questionIndex == story.questions.count - 1 ? "Finish Story" : "Next Question", action: nextQuestion, enabled: session.answeredCurrentItem)
             }
         } else {
-            HStack(spacing: 14) {
-                Button("Listen", systemImage: "speaker.wave.2.fill") {
-                    speech.cancel(); speaker.speak(prompt.text)
-                }.buttonStyle(.bordered).controlSize(.large)
-                Button {
-                    speaker.stop()
-                    if speech.isListening { speech.finishListening() }
-                    else { Task { await speech.start(target: prompt.text, onResult: handleSpeech) } }
-                } label: {
-                    Label(speech.isListening ? "Finish" : "Read Aloud", systemImage: speech.isListening ? "stop.fill" : "mic.fill")
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large)
-                .tint(ReadLabStyle.ink)
-                .foregroundStyle(.white)
-                .disabled(session.answeredCurrentItem || speech.isPreparing)
-                .accessibilityIdentifier("microphoneButton")
-            }
-            if session.answeredCurrentItem {
-                ReadLabActionButton(title: session.itemIndex == 5 ? "Finish" : "Next Word", action: nextPrompt)
-            } else {
+            HStack(spacing: 30) {
                 Menu {
                     Button("Practise with a Grown-up", systemImage: "person.2") { stopAudio(); adultCheckPresented = true }
                     Button("Try Another Word", systemImage: "arrow.right") { nextPrompt() }
-                } label: { Label("More", systemImage: "ellipsis.circle") }
-                .buttonStyle(.bordered).controlSize(.large)
+                } label: { Label("More", systemImage: "ellipsis") }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .controlSize(.large)
+                Spacer(minLength: 8)
+                ReadLabMicrophoneButton(listening: speech.isListening, preparing: speech.isPreparing,
+                                        finishing: speech.isFinishing, inputLevel: speech.inputLevel,
+                                        completed: session.answeredCurrentItem) {
+                    speaker.stop()
+                    if speech.isListening { speech.finishListening() }
+                    else { Task { await speech.start(target: prompt.text, onResult: handleSpeech) } }
+                }
+                Spacer(minLength: 8)
+                if session.answeredCurrentItem {
+                    Button(session.itemIndex == 5 ? "Finish" : "Next Word", systemImage: "arrow.right") { nextPrompt() }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.large)
+                        .tint(ReadLabStyle.blue)
+                        .foregroundStyle(ReadLabStyle.ink)
+                } else { Color.clear.frame(width: 48, height: 48) }
             }
+            .frame(maxWidth: 420)
+            .padding(.vertical, 6)
         }
+    }
+
+    private func playPreview(_ text: String) {
+        speech.cancel()
+        feedback = ""
+        speaker.speak(text)
     }
 
     private var completion: some View {

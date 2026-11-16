@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct ReaddingSuportApp: App {
+struct ReadLabApp: App {
     @State private var store: ReadLabStore
 
     init() {

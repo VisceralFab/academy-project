@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class ReaddingSuportUITests: XCTestCase {
+final class ReadLabUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
     func testCompleteJourneyAndResumeAllThreePaths() throws {
@@ -21,8 +21,9 @@ final class ReaddingSuportUITests: XCTestCase {
         XCTAssertTrue(app.switches["dyslexicToggle"].waitForExistence(timeout: 5))
         app.switches["dyslexicToggle"].tap()
         capture("02-learning-preferences", app: app)
+        app.switches["dyslexicToggle"].tap()
         app.buttons["Continue"].tap()
-        let firstWords = app.buttons.containing(.staticText, identifier: "First words").firstMatch
+        let firstWords = app.buttons["readingPath-words"]
         XCTAssertTrue(firstWords.waitForExistence(timeout: 5))
         capture("03-reading-paths", app: app)
         firstWords.tap()
@@ -32,9 +33,12 @@ final class ReaddingSuportUITests: XCTestCase {
         app.buttons["Let’s Begin"].tap()
         XCTAssertTrue(app.buttons["accountButton"].waitForExistence(timeout: 5))
         capture("05-first-words-home", app: app)
-        app.buttons["Let’s Read"].tap()
+        app.buttons["Let’s start read"].tap()
         XCTAssertTrue(app.sliders["Syllable focus"].waitForExistence(timeout: 5))
         capture("06-first-words-exercise", app: app)
+        XCTAssertFalse(app.buttons["Listen"].exists)
+        XCTAssertTrue(app.buttons["readingPrompt"].exists)
+        app.buttons["readingPrompt"].tap()
         app.sliders["Syllable focus"].adjust(toNormalizedSliderPosition: 1)
         app.sliders["Reading text size"].adjust(toNormalizedSliderPosition: 0.9)
         app.buttons["More"].tap()
@@ -51,7 +55,7 @@ final class ReaddingSuportUITests: XCTestCase {
 
         changePath("Hearing sounds", app: app)
         capture("07-hearing-home", app: app)
-        app.buttons["Let’s Hear"].tap()
+        app.buttons["Let’s start hearing"].tap()
         XCTAssertTrue(app.buttons["microphoneButton"].waitForExistence(timeout: 5))
         capture("08-hearing-exercise", app: app)
         app.buttons["More"].tap()
@@ -60,7 +64,7 @@ final class ReaddingSuportUITests: XCTestCase {
 
         changePath("Growing readers", app: app)
         capture("09-growing-readers-home", app: app)
-        app.buttons["Let’s Read"].tap()
+        app.buttons["Let’s start read"].tap()
         XCTAssertTrue(app.buttons["Story Questions"].waitForExistence(timeout: 5))
         capture("10-story", app: app)
         app.buttons["Story Questions"].tap()
