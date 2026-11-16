@@ -1,19 +1,134 @@
-//
-//  ReaddingSuportTests.swift
-//  ReaddingSuportTests
-//
-//  Created by Cristian Yair Gomez Herrera on 12/11/2026.
-//
-
+import Foundation
 import Testing
+import UIKit
 @testable import ReaddingSuport
 
+@MainActor
 struct ReaddingSuportTests {
-
-    @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
-        // Swift Testing Documentation
-        // https://developer.apple.com/documentation/testing
+    @Test func difficultyAdaptsWithoutLeavingBounds() {
+        var difficulty = AdaptiveDifficulty()
+        let firstChange = difficulty.record(success: true)
+        #expect(!firstChange)
+        let secondChange = difficulty.record(success: true)
+        #expect(!secondChange)
+        let promotion = difficulty.record(success: true)
+        #expect(promotion)
+        #expect(difficulty.level == 2)
+        let firstMistake = difficulty.record(success: false)
+        #expect(!firstMistake)
+        let simplification = difficulty.record(success: false)
+        #expect(simplification)
+        #expect(difficulty.level == 1)
+        for _ in 0..<40 { difficulty.record(success: true) }
+        #expect(difficulty.level == 5)
+        for _ in 0..<40 { difficulty.record(success: false) }
+        #expect(difficulty.level == 1)
     }
 
+    @Test func aMistakeBreaksTheSuccessStreak() {
+        var difficulty = AdaptiveDifficulty()
+        difficulty.record(success: true)
+        difficulty.record(success: true)
+        difficulty.record(success: false)
+        difficulty.record(success: true)
+        #expect(difficulty.level == 1)
+        #expect(difficulty.successStreak == 1)
+        #expect(difficulty.mistakes == 0)
+    }
+
+    @Test func speechRequiresTheWholePrompt() {
+        #expect(SpeechMatch.matches("THE moon shines at night!", target: "The moon shines at night."))
+        #expect(SpeechMatch.matches("  Rabbit. ", target: "rabbit"))
+        #expect(!SpeechMatch.matches("cat", target: "caterpillar"))
+        #expect(!SpeechMatch.matches("the moon", target: "The moon shines at night."))
+        #expect(!SpeechMatch.matches("the moon shines at night extra", target: "The moon shines at night."))
+        #expect(!SpeechMatch.matches("", target: ""))
+    }
+
+    @Test func everyPathResumesItsOwnSessionAfterRelaunch() throws {
+        let suite = "readlab.tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ReadLabStore(defaults: defaults)
+        store.data.hasOnboarded = true
+        store.data.profile.childName = "Luca"
+        store.data.preferences.useDyslexicFont = true
+        store.data.selectedPath = .words
+        for path in ReadingPath.allCases {
+            var session = store.start(path: path, theme: ReadingTheme.themes(for: path)[0])
+            session.itemIndex = 3
+            session.sectionIndex = 1
+            session.questionIndex = 2
+            session.showingQuestions = true
+            session.answeredCurrentItem = true
+            store.update(session)
+            store.record(success: true, path: path)
+        }
+        let restored = ReadLabStore(defaults: defaults)
+        #expect(restored.data == store.data)
+        #expect(restored.data.preferences.useDyslexicFont)
+        #expect(restored.session(for: .stories)?.questionIndex == 2)
+        #expect(restored.session(for: .words)?.answeredCurrentItem == true)
+    }
+
+    @Test func trackingOptOutClearsAnalyticsButKeepsResumeAndAdaptation() throws {
+        let suite = "readlab.tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ReadLabStore(defaults: defaults)
+        let session = store.start(path: .words, theme: ReadingTheme.themes(for: .words)[0])
+        store.record(success: true, path: .words)
+        #expect(store.data.totals["words"]?.attempts == 1)
+        store.setTracking(false)
+        for _ in 0..<3 { store.record(success: true, path: .words) }
+        #expect(store.data.totals.isEmpty)
+        #expect(store.session(for: .words)?.id == session.id)
+        #expect(store.level(for: .words) == 2)
+    }
+
+    @Test func completionIsCountedOnce() throws {
+        let suite = "readlab.tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ReadLabStore(defaults: defaults)
+        var session = store.start(path: .hearing, theme: ReadingTheme.themes(for: .hearing)[0])
+        store.finish(&session)
+        store.finish(&session)
+        #expect(store.data.totals["hearing"]?.completedActivities == 1)
+        #expect(store.session(for: .hearing)?.completed == true)
+    }
+
+    @Test func wordPracticeHasTwoToSixSyllables() {
+        for theme in ReadingTheme.themes(for: .words) {
+            for level in 1...5 {
+                let prompts = ReadLabLibrary.prompts(theme: theme.id, level: level)
+                #expect(prompts.count == 6)
+                for prompt in prompts {
+                    let pieces = prompt.syllables.flatMap { $0.components(separatedBy: .whitespaces) }.filter { !$0.isEmpty }
+                    #expect(pieces.count == level + 1, "\(theme.id), level \(level): \(prompt.text)")
+                    #expect(SpeechMatch.normalized(pieces.joined()) == SpeechMatch.normalized(prompt.text.replacingOccurrences(of: " ", with: "")))
+                }
+            }
+        }
+    }
+
+    @Test func storiesHaveShortSectionsAndValidQuestions() {
+        for theme in ReadingTheme.themes(for: .stories) {
+            var previousWordCount = 0
+            for level in 1...5 {
+                let story = ReadLabLibrary.story(theme: theme.id, level: level)
+                #expect(story.sections.allSatisfy { !$0.isEmpty && $0.count <= 3 })
+                #expect(story.questions.count >= 3)
+                #expect(story.questions.allSatisfy { $0.options.indices.contains($0.answer) })
+                let words = story.sections.flatMap { $0 }.joined(separator: " ").split(separator: " ").count
+                #expect(words > previousWordCount)
+                previousWordCount = words
+            }
+        }
+    }
+
+    @Test func bundledFontIsRegistered() {
+        #expect(Bundle.main.url(forResource: "OpenDyslexic-Bold", withExtension: "otf") != nil)
+        #expect(UIFont(name: "OpenDyslexic-Bold", size: 20) != nil)
+    }
 }

@@ -1,83 +1,68 @@
 import SwiftUI
 
 struct ReadLabSummaryView: View {
-    let profile: ReadLabChildProfile
-    let preferences: ReadLabLearningPreferences
-    let specialist: ReadLabSpecialistInfo
-    let selectedFocus: Set<ReadLabReadingFocus>
+    let store: ReadLabStore
     let onBack: () -> Void
     let onEditProfile: () -> Void
     let onEditLearning: () -> Void
-    let onEditSpecialist: () -> Void
     let onEditFocus: () -> Void
     let onDone: () -> Void
-
     var body: some View {
-        ReadLabStepLayout(
-            step: 6,
-            yellow: true,
-            onBack: onBack,
-            actionTitle: "Done",
-            actionEnabled: true,
-            onAction: onDone
-        ) { compact in
-            VStack(alignment: .leading, spacing: compact ? 36 : 42) {
-                Text("Your learning journey\nis finally ready!")
-                    .font(.system(size: compact ? 46 : 66, weight: .regular, design: .rounded))
-                    .tracking(-1.8)
-                    .foregroundStyle(ReadLabStyle.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, compact ? 48 : 62)
-                    .accessibilityAddTraits(.isHeader)
-
-                VStack(spacing: 0) {
-                    summaryRow("Child Name: \(profile.childName)", action: onEditProfile)
-                    summaryRow("Child Age: \(profile.ageRange?.rawValue ?? "Not selected")", action: onEditProfile)
-                    summaryRow(profile.readingFamiliarity?.rawValue ?? "Reading familiarity not selected", action: onEditProfile)
-                    summaryRow(preferences.diagnosis == .diagnosed ? "Diagnosed Learning Difficulty" : "No Diagnosed Learning Difficulties", action: onEditLearning)
-                    if specialist.isFollowedBySpecialist {
-                        summaryRow("Specialist: \(specialist.name.isEmpty ? "Yes" : specialist.name)", action: onEditSpecialist)
+        GeometryReader { geo in
+            let compact = geo.size.width < 850
+            ZStack {
+                ReadLabPastelBackground()
+                VStack(spacing: 10) {
+                    ReadLabStepHeader(step: 5, onBack: onBack)
+                        .padding(.horizontal, compact ? 24 : 64)
+                    List {
+                        Section {
+                            ReadLabPageTitle(title: "Your learning journey is ready!", subtitle: "One last look, then let the adventure begin.", compact: compact)
+                                .padding(.vertical, 20)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                        Section {
+                            row("Child’s name", value: store.data.profile.childName, action: onEditProfile)
+                            row("Age range", value: store.data.profile.ageRange?.rawValue ?? "Not specified", action: onEditProfile)
+                            row("Reading familiarity", value: store.data.profile.readingFamiliarity?.rawValue ?? "Not selected", action: onEditProfile)
+                            row("Learning differences", value: store.data.preferences.diagnosis.rawValue, action: onEditLearning)
+                            row("Specialist", value: specialistSummary, action: onEditLearning)
+                            row("Reading font", value: store.data.preferences.useDyslexicFont ? "OpenDyslexic Bold" : "System Rounded", action: onEditLearning)
+                            row("Progress overview", value: store.data.preferences.trackReadingProgress ? "Enabled" : "Disabled", action: onEditLearning)
+                            row("Reading path", value: store.data.selectedPath.title, action: onEditFocus)
+                        }
                     }
-                    summaryRow(focusSummary, action: onEditFocus, last: true)
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
+                    .frame(maxWidth: 1120)
+                    HStack {
+                        Spacer()
+                        ReadLabActionButton(title: "Let’s Begin", action: onDone)
+                    }
+                    .padding(.horizontal, compact ? 24 : 64)
+                    .padding(.vertical, 10)
                 }
-                .padding(.horizontal, compact ? 12 : 16)
-                .background(.white, in: RoundedRectangle(cornerRadius: 24))
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity)
+                .padding(.top, 14)
+                .padding(.bottom, 8)
             }
         }
     }
-
-    private var focusSummary: String {
-        ReadLabReadingFocus.allCases
-            .filter { selectedFocus.contains($0) }
-            .map(\.rawValue)
-            .joined(separator: " – ")
+    private var specialistSummary: String {
+        guard store.data.specialist.isFollowedBySpecialist else { return "Not followed by a specialist" }
+        let info = [store.data.specialist.name, store.data.specialist.profession].filter { !$0.isEmpty }
+        return info.isEmpty ? "Followed by a specialist" : info.joined(separator: " · ")
     }
-
-    private func summaryRow(_ title: String, action: @escaping () -> Void, last: Bool = false) -> some View {
+    private func row(_ title: String, value: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                Text(title)
-                    .font(.system(size: 17, design: .rounded))
-                    .foregroundStyle(.black)
-                    .multilineTextAlignment(.leading)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.gray.opacity(0.7))
-            }
-            .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(ReadLabTapStyle())
-        .accessibilityHint("Return to edit this information")
-        .overlay(alignment: .bottom) {
-            if !last {
-                Rectangle()
-                    .fill(Color.black.opacity(0.12))
-                    .frame(height: 1)
-            }
-        }
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title).readLabFont(16, rounded: false).foregroundStyle(.secondary)
+                    Text(value).readLabFont(20, weight: .medium).foregroundStyle(ReadLabStyle.ink)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+            }.padding(.vertical, 8)
+        }.accessibilityHint("Edit \(title.lowercased())")
     }
 }
