@@ -26,19 +26,29 @@ extension EnvironmentValues {
     }
 }
 
+/// Compensates for the wider custom glyphs before applying the user's Dynamic Type scale.
+enum ReadLabTypography {
+    static func dyslexicSize(for size: CGFloat) -> CGFloat {
+        let adjustment = min(0.17, max(0, size - 24) * 0.17 / 46)
+        return size * (0.82 - adjustment)
+    }
+}
+
 private struct ReadLabFont: ViewModifier {
     @Environment(\.useDyslexicFont) private var dyslexic
     @ScaledMetric private var size: CGFloat
     let weight: Font.Weight
     let rounded: Bool
+    let baseSize: CGFloat
     init(size: CGFloat, weight: Font.Weight, rounded: Bool) {
         _size = ScaledMetric(wrappedValue: size, relativeTo: .body)
         self.weight = weight
         self.rounded = rounded
+        self.baseSize = size
     }
     func body(content: Content) -> some View {
         content.font(dyslexic
-            ? .custom("OpenDyslexic-Bold", fixedSize: size * 0.9)
+            ? .custom("OpenDyslexic-Bold", fixedSize: ReadLabTypography.dyslexicSize(for: baseSize) * size / baseSize)
             : .system(size: size, weight: weight, design: rounded ? .rounded : .default))
     }
 }

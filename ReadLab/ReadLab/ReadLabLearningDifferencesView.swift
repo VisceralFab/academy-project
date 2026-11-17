@@ -11,17 +11,20 @@ struct ReadLabLearningDifferencesView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 18)], spacing: 18) {
                     ForEach(ReadLabDiagnosis.allCases) { choice in
                         ReadLabChoiceCard(title: choice.rawValue, subtitle: choice.detail, selected: preferences.diagnosis == choice) { preferences.diagnosis = choice }
+                            .accessibilityIdentifier(choice == .diagnosed ? "diagnosis-diagnosed" : "diagnosis-none")
                     }
                 }
                 VStack(spacing: 24) {
-                    Toggle(isOn: $preferences.useDyslexicFont) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Use OpenDyslexic for the app").readLabFont(21, weight: .semibold)
-                            Text("Try a different reading font. You can change this in Account.").readLabFont(17, rounded: false)
+                    if preferences.diagnosis == .diagnosed {
+                        Toggle(isOn: $preferences.useDyslexicFont) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Use OpenDyslexic for the app").readLabFont(21, weight: .semibold)
+                                Text("Try a different reading font. You can change this in Account.").readLabFont(17, rounded: false)
+                            }
                         }
+                        .accessibilityIdentifier("dyslexicToggle")
+                        Divider()
                     }
-                    .accessibilityIdentifier("dyslexicToggle")
-                    Divider()
                     Toggle(isOn: $preferences.trackReadingProgress) {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Track reading practice and progress").readLabFont(21, weight: .semibold)

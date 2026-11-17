@@ -5,6 +5,36 @@ import UIKit
 
 @MainActor
 struct ReadLabTests {
+    @Test func childProfileOnlyRequiresAName() {
+        var profile = ReadLabChildProfile()
+        #expect(!profile.isValid)
+        profile.childName = "   "
+        #expect(!profile.isValid)
+        profile.childName = "Luca"
+        #expect(profile.isValid)
+        #expect(profile.readingFamiliarity == nil)
+    }
+
+    @Test func syllableLensMovesContinuouslyBetweenNeighbours() {
+        let widths: [CGFloat] = [80, 80, 80, 80]
+        let left = SyllableLens.scales(widths: widths, position: 0.499)
+        let right = SyllableLens.scales(widths: widths, position: 0.501)
+        #expect(abs(left[1] - right[1]) < 0.01)
+        #expect(abs(left[2] - right[2]) < 0.01)
+        #expect(left[1] > 1.1 && left[2] > 1.1)
+        #expect(SyllableLens.scales(widths: [], position: 0.5).isEmpty)
+    }
+
+    @Test func syllableLensAccountsForActualGlyphWidths() {
+        let widths: [CGFloat] = [40, 160, 65]
+        let middle = SyllableLens.position(of: 1, widths: widths)
+        let scales = SyllableLens.scales(widths: widths, position: middle)
+        #expect(abs(scales[1] - 1.42) < 0.001)
+        #expect(scales[1] > scales[0] && scales[1] > scales[2])
+        #expect(SyllableLens.position(of: 0, widths: widths) == 0)
+        #expect(SyllableLens.position(of: 2, widths: widths) == 1)
+    }
+
     @Test func difficultyAdaptsWithoutLeavingBounds() {
         var difficulty = AdaptiveDifficulty()
         let firstChange = difficulty.record(success: true)

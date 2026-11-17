@@ -125,42 +125,23 @@ struct ReadLabExerciseView: View {
                     .frame(height: compact ? 210 : 250)
             } else {
                 syllableReader(compact: compact)
-                VStack(spacing: 10) {
-                    Text("Slide to explore each syllable").readLabFont(17, rounded: false)
-                    Slider(value: $syllablePosition, in: 0...Double(max(1, syllableParts.count - 1)), step: 1)
-                        .accessibilityLabel("Syllable focus")
-                        .accessibilityValue(syllableParts[min(Int(syllablePosition), syllableParts.count - 1)])
-                }.frame(maxWidth: 650)
+
             }
             feedbackView
         }
         .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: session.answeredCurrentItem)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: syllablePosition)
     }
 
     private var syllableParts: [String] {
         prompt.syllables.flatMap { $0.components(separatedBy: .whitespaces) }.filter { !$0.isEmpty }
     }
-    /// First words: the word is shown but not spoken on tap — the child must read it aloud with the microphone.
+    /// The lens and its track share the measured width of the syllables.
     private func syllableReader(compact: Bool) -> some View {
-        FlowingSyllables(spacing: compact ? 8 : 12) {
-                ForEach(Array(syllableParts.enumerated()), id: \.offset) { index, syllable in
-                    let focused = Int(syllablePosition) == index
-                    Text(syllable)
-                        .readLabFont((compact ? 35 : 48) + zoom * 25 + (focused ? 12 : 0), weight: .semibold)
-                        .padding(.horizontal, 10).padding(.vertical, 14)
-                        .background(session.answeredCurrentItem ? Color.green.opacity(0.18) : (focused ? ReadLabStyle.sky.opacity(0.5) : .clear), in: RoundedRectangle(cornerRadius: 18))
-                        .overlay(alignment: .bottom) {
-                            Capsule().fill(focused ? ReadLabStyle.ink : ReadLabStyle.ink.opacity(0.16)).frame(height: focused ? 4 : 2)
-                        }
-                }
-        }
-        .frame(minHeight: compact ? 180 : 240)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(prompt.text)
-        .accessibilityHint("Read this aloud with the microphone")
-        .accessibilityIdentifier("readingPrompt")
+        ReadLabSyllableExplorer(parts: syllableParts,
+                               pointSize: (compact ? 35 : 48) + zoom * 25,
+                               completed: session.answeredCurrentItem,
+                               position: $syllablePosition)
     }
 
     @ViewBuilder private var feedbackView: some View {
@@ -442,39 +423,5 @@ private struct WateringTreeView: View {
         .onChange(of: listening) { _, value in falling = value && !reduceMotion }
         .onChange(of: reduceMotion) { _, value in falling = listening && !value }
         .accessibilityHidden(true)
-    }
-}
-
-/// A wrapping, centered line of syllables that remains usable at large text sizes.
-private struct FlowingSyllables: Layout {
-    var spacing: CGFloat
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        arrangement(width: proposal.width ?? 700, subviews: subviews).size
-    }
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = arrangement(width: bounds.width, subviews: subviews)
-        for (index, point) in result.points.enumerated() {
-            subviews[index].place(at: CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y), proposal: .unspecified)
-        }
-    }
-    private func arrangement(width: CGFloat, subviews: Subviews) -> (size: CGSize, points: [CGPoint]) {
-        var points = [CGPoint](repeating: .zero, count: subviews.count)
-        var rows: [[Int]] = [[]]
-        var rowWidth: CGFloat = 0
-        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
-        for i in sizes.indices {
-            if rowWidth > 0 && rowWidth + sizes[i].width > width { rows.append([]); rowWidth = 0 }
-            rows[rows.count - 1].append(i)
-            rowWidth += sizes[i].width + spacing
-        }
-        var y: CGFloat = 0
-        for row in rows where !row.isEmpty {
-            let total = row.reduce(CGFloat(0)) { $0 + sizes[$1].width } + spacing * CGFloat(row.count - 1)
-            let height = row.map { sizes[$0].height }.max() ?? 0
-            var x = max(0, (width - total) / 2)
-            for i in row { points[i] = CGPoint(x: x, y: y + (height - sizes[i].height) / 2); x += sizes[i].width + spacing }
-            y += height + spacing
-        }
-        return (CGSize(width: width, height: max(0, y - spacing)), points)
     }
 }

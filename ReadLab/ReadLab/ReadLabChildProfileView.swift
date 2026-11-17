@@ -28,26 +28,22 @@ struct ReadLabChildProfileView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 14)], spacing: 14) {
                         ForEach(ReadLabAgeRange.allCases) { age in
                             Button { profile.ageRange = age; nameFocused = false } label: {
-                                Text(age.rawValue).readLabFont(22, weight: profile.ageRange == age ? .bold : .medium)
-                                    .foregroundStyle(profile.ageRange == age ? Color.white : ReadLabStyle.ink)
+                                Text(age.rawValue).readLabFont(22, weight: .medium)
+                                    .foregroundStyle(ReadLabStyle.ink)
                                     .frame(maxWidth: .infinity, minHeight: 58)
-                                    .background(profile.ageRange == age ? ReadLabStyle.actionFill : .white, in: RoundedRectangle(cornerRadius: 18))
+                                    .background(.white, in: RoundedRectangle(cornerRadius: 18))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 18)
+                                            .strokeBorder(profile.ageRange == age ? ReadLabStyle.blue : .clear, lineWidth: 3)
+                                    }
                             }
                             .buttonStyle(ReadLabTapStyle())
                             .accessibilityAddTraits(profile.ageRange == age ? .isSelected : [])
+                            .accessibilityIdentifier("ageRange-\(age.rawValue)")
                         }
                     }.frame(maxWidth: 500)
                 }
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Reading familiarity · required").readLabFont(17, weight: .semibold)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 245), spacing: 18)], spacing: 18) {
-                        ForEach(ReadLabReadingFamiliarity.allCases) { choice in
-                            ReadLabChoiceCard(title: choice.rawValue, subtitle: choice.detail, selected: profile.readingFamiliarity == choice) {
-                                profile.readingFamiliarity = choice; nameFocused = false
-                            }
-                        }
-                    }
-                }
+
             }.foregroundStyle(ReadLabStyle.ink)
         }
     }

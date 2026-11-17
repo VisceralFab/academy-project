@@ -37,7 +37,7 @@ struct ReadLabChildProfile: Equatable, Codable {
     var childName = ""
     var ageRange: ReadLabAgeRange?
     var readingFamiliarity: ReadLabReadingFamiliarity?
-    var isValid: Bool { !childName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && readingFamiliarity != nil }
+    var isValid: Bool { !childName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }
 
 enum ReadLabAgeRange: String, CaseIterable, Identifiable, Codable {
