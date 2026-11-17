@@ -27,7 +27,6 @@ struct ReadLabSummaryView: View {
                             row("Age range", value: store.data.profile.ageRange?.rawValue ?? "Not specified", action: onEditProfile)
                             row("Reading familiarity", value: store.data.profile.readingFamiliarity?.rawValue ?? "Not selected", action: onEditProfile)
                             row("Learning differences", value: store.data.preferences.diagnosis.rawValue, action: onEditLearning)
-                            row("Specialist", value: specialistSummary, action: onEditLearning)
                             row("Reading font", value: store.data.preferences.useDyslexicFont ? "OpenDyslexic Bold" : "System Rounded", action: onEditLearning)
                             row("Progress overview", value: store.data.preferences.trackReadingProgress ? "Enabled" : "Disabled", action: onEditLearning)
                             row("Reading path", value: store.data.selectedPath.title, action: onEditFocus)
@@ -47,11 +46,6 @@ struct ReadLabSummaryView: View {
                 .padding(.bottom, 8)
             }
         }
-    }
-    private var specialistSummary: String {
-        guard store.data.specialist.isFollowedBySpecialist else { return "Not followed by a specialist" }
-        let info = [store.data.specialist.name, store.data.specialist.profession].filter { !$0.isEmpty }
-        return info.isEmpty ? "Followed by a specialist" : info.joined(separator: " · ")
     }
     private func row(_ title: String, value: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {

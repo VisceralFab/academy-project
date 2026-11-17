@@ -3,12 +3,19 @@ import SwiftUI
 struct ReadLabSettingsView: View {
     @Bindable var store: ReadLabStore
     @Environment(\.dismiss) private var dismiss
+    @State private var report: ReportFile?
+    @State private var reportError: String?
+    private struct ReportFile: Identifiable { let id = UUID(); let url: URL }
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     HStack(spacing: 16) {
-                        Image(systemName: "person.crop.circle.fill").font(.system(size: 44)).foregroundStyle(ReadLabStyle.ink)
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 26, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 56, height: 56)
+                            .background(ReadLabStyle.actionFill, in: Circle())
                         VStack(alignment: .leading, spacing: 4) {
                             Text(store.data.profile.childName).readLabFont(22, weight: .semibold)
                             Text("Your ReadLab journey").readLabFont(16, rounded: false).foregroundStyle(.secondary)
@@ -37,6 +44,22 @@ struct ReadLabSettingsView: View {
                         NavigationLink("Practice overview") { ReadLabProgressView(store: store) }
                     }
                 }
+                Section {
+                    Button { exportReport() } label: {
+                        Label("Download performance report", systemImage: "arrow.down.doc.fill")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(ReadLabStyle.actionFill)
+                    }
+                    .frame(minHeight: 40)
+                    .accessibilityHint("Creates a PDF you can save to Files, print or send by email")
+                    .accessibilityIdentifier("downloadReportButton")
+                } header: {
+                    Text("Performance report")
+                } footer: {
+                    Text(store.data.preferences.trackReadingProgress
+                         ? "A PDF with the child’s profile, current level, success rate by path and theme, daily practice and every recorded exercise."
+                         : "Progress tracking is off, so the report will contain only the child’s profile. Turn on “Track reading progress” to record exercises.")
+                }
                 Section("Child profile") {
                     TextField("Child name", text: $store.data.profile.childName)
                         .textContentType(.givenName)
@@ -53,11 +76,6 @@ struct ReadLabSettingsView: View {
                 Section("Learning support") {
                     Picker("Learning differences", selection: $store.data.preferences.diagnosis) {
                         ForEach(ReadLabDiagnosis.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    Toggle("Followed by a specialist", isOn: $store.data.specialist.isFollowedBySpecialist)
-                    if store.data.specialist.isFollowedBySpecialist {
-                        TextField("Specialist profession", text: $store.data.specialist.profession)
-                        TextField("Specialist name", text: $store.data.specialist.name)
                     }
                 }
                 Section {
@@ -77,6 +95,19 @@ struct ReadLabSettingsView: View {
             }
         }
         .onDisappear { normalizeName() }
+        .sheet(item: $report) { file in
+            ReadLabShareSheet(items: [file.url]).ignoresSafeArea()
+        }
+        .alert("The report could not be created", isPresented: Binding(get: { reportError != nil }, set: { if !$0 { reportError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(reportError ?? "")
+        }
+    }
+    private func exportReport() {
+        normalizeName()
+        do { report = ReportFile(url: try ReadLabPerformanceReport.makePDF(from: store.data)) }
+        catch { reportError = error.localizedDescription }
     }
     private func normalizeName() {
         let name = store.data.profile.childName.trimmingCharacters(in: .whitespacesAndNewlines)

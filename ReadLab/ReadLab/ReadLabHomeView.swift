@@ -60,18 +60,11 @@ struct ReadLabHomeView: View {
 
     private func header(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(path.title + ":")
-                .readLabFont(compact ? 52 : 70, weight: .medium)
-                .padding(.trailing, 60)
+            Text(path.title)
+                .readLabFont(compact ? 52 : 70, weight: .bold)
+                .padding(.trailing, 84)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(alignment: .topTrailing) {
-                    Button("Account", systemImage: "person.crop.circle") { settingsPresented = true }
-                        .labelStyle(.iconOnly)
-                        .font(.system(size: 40))
-                        .buttonStyle(.borderless)
-                        .frame(width: 52, height: 64)
-                        .accessibilityIdentifier("accountButton")
-                }
+                .overlay(alignment: .topTrailing) { accountButton }
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(path.question)
                 .readLabFont(compact ? 52 : 70, weight: .medium)
@@ -79,6 +72,35 @@ struct ReadLabHomeView: View {
                 .accessibilityAddTraits(.isHeader)
         }
         .foregroundStyle(ReadLabStyle.ink)
+    }
+
+    /// A filled, high-contrast avatar so the Account entry point stands out on the pastel background.
+    private var accountButton: some View {
+        Button { settingsPresented = true } label: {
+            Image(systemName: "person.fill")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
+                .frame(width: 68, height: 68)
+                // Top-lit gradient + inner highlight give the button a raised, tactile look.
+                .background(
+                    LinearGradient(colors: [Color(red: 0.30, green: 0.63, blue: 0.86), ReadLabStyle.actionFill],
+                                   startPoint: .top, endPoint: .bottom),
+                    in: Circle())
+                .overlay {
+                    Circle().strokeBorder(
+                        LinearGradient(colors: [.white.opacity(0.55), .clear], startPoint: .top, endPoint: .center),
+                        lineWidth: 2).padding(4)
+                }
+                .overlay { Circle().strokeBorder(.white, lineWidth: 4) }
+                // Two layered shadows: a tight contact shadow and a soft ambient one.
+                .shadow(color: ReadLabStyle.ink.opacity(0.35), radius: 2, y: 2)
+                .shadow(color: ReadLabStyle.ink.opacity(0.30), radius: 14, y: 9)
+        }
+        .buttonStyle(ReadLabTapStyle())
+        .accessibilityLabel("Account")
+        .accessibilityHint("Profile, settings and performance report")
+        .accessibilityIdentifier("accountButton")
     }
 
     private func suggestionCard(width: CGFloat, height: CGFloat?, imageHeight: CGFloat) -> some View {
@@ -92,7 +114,7 @@ struct ReadLabHomeView: View {
                 }
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 0) {
-                Text(suggestion.title).readLabFont(35, weight: .semibold)
+                Text(suggestion.title).readLabFont(35, weight: .bold)
                 Text(suggestion.detail).readLabFont(25, weight: .light, rounded: false)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 22)
@@ -125,7 +147,7 @@ struct ReadLabHomeView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 26)
                 .frame(minHeight: 62)
-                .background(Color(white: 0.52), in: Capsule())
+                .background(ReadLabStyle.secondaryFill, in: Capsule())
         }
         .buttonStyle(ReadLabTapStyle())
         .accessibilityHint("Choose another collection")
@@ -134,10 +156,11 @@ struct ReadLabHomeView: View {
         Button { begin(suggestion) } label: {
             Text(path == .hearing ? "Let’s start hearing" : "Let’s start read")
                 .readLabFont(24, weight: .bold)
-                .foregroundStyle(ReadLabStyle.ink)
+                .foregroundStyle(.white)
                 .padding(.horizontal, 24)
                 .frame(maxWidth: .infinity, minHeight: 62)
-                .background(ReadLabStyle.blue, in: Capsule())
+                .background(ReadLabStyle.actionFill, in: Capsule())
+                .shadow(color: ReadLabStyle.actionFill.opacity(0.30), radius: 6, y: 3)
         }.buttonStyle(ReadLabTapStyle())
     }
     private var mascot: some View {
@@ -157,7 +180,7 @@ struct ReadLabHomeView: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(resumeTitle).readLabFont(15, weight: .light, rounded: false)
-                    Text(theme.title).readLabFont(25, weight: .semibold)
+                    Text(theme.title).readLabFont(25, weight: .bold)
                     if let savedSession {
                         ProgressView(value: sessionProgress(savedSession))
                             .tint(Color(red: 0.44, green: 0.59, blue: 0.42))

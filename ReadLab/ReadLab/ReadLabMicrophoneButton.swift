@@ -14,9 +14,9 @@ struct ReadLabMicrophoneButton: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(LinearGradient(colors: [Color(white: 0.68), Color(white: 0.42)], startPoint: .top, endPoint: .bottom))
-                Circle().strokeBorder(.white, lineWidth: 2)
-                Circle().strokeBorder(Color(white: 0.46), lineWidth: 1).padding(3)
+                    .fill(LinearGradient(colors: [Color(red: 0.30, green: 0.63, blue: 0.86), ReadLabStyle.actionFill], startPoint: .top, endPoint: .bottom))
+                Circle().strokeBorder(.white, lineWidth: 3)
+                Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1).padding(4)
                 ClassicMicrophoneMark().fill(.white).padding(11)
                 if preparing || finishing {
                     Circle().fill(.black.opacity(0.25))
@@ -34,7 +34,8 @@ struct ReadLabMicrophoneButton: View {
                     .scaleEffect(listening && !reduceMotion ? 1.08 + CGFloat(inputLevel) * 0.12 : 1.05)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: inputLevel)
             }
-            .shadow(color: .black.opacity(0.18), radius: 4, y: 3)
+            .shadow(color: ReadLabStyle.ink.opacity(0.30), radius: 2, y: 2)
+            .shadow(color: ReadLabStyle.actionFill.opacity(0.35), radius: 12, y: 7)
             .opacity(completed ? 0.65 : 1)
         }
         .buttonStyle(ReadLabTapStyle())

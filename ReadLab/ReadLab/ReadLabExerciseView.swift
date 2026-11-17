@@ -89,7 +89,7 @@ struct ReadLabExerciseView: View {
                 .controlSize(.large)
                 .accessibilityIdentifier("closeActivityButton")
             VStack(alignment: .leading, spacing: 6) {
-                Text(theme.title).readLabFont(compact ? 24 : 30, weight: .semibold)
+                Text(theme.title).readLabFont(compact ? 24 : 30, weight: .bold)
                 Text(session.path.title).readLabFont(16, rounded: false)
             }
             Spacer(minLength: 0)
@@ -142,9 +142,9 @@ struct ReadLabExerciseView: View {
     private var syllableParts: [String] {
         prompt.syllables.flatMap { $0.components(separatedBy: .whitespaces) }.filter { !$0.isEmpty }
     }
+    /// First words: the word is shown but not spoken on tap — the child must read it aloud with the microphone.
     private func syllableReader(compact: Bool) -> some View {
-        Button { playPreview(prompt.text) } label: {
-            FlowingSyllables(spacing: compact ? 8 : 12) {
+        FlowingSyllables(spacing: compact ? 8 : 12) {
                 ForEach(Array(syllableParts.enumerated()), id: \.offset) { index, syllable in
                     let focused = Int(syllablePosition) == index
                     Text(syllable)
@@ -155,13 +155,11 @@ struct ReadLabExerciseView: View {
                             Capsule().fill(focused ? ReadLabStyle.ink : ReadLabStyle.ink.opacity(0.16)).frame(height: focused ? 4 : 2)
                         }
                 }
-            }
-            .frame(minHeight: compact ? 180 : 240)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Listen to \(prompt.text)")
-        .accessibilityHint("Hear the complete word or phrase")
+        .frame(minHeight: compact ? 180 : 240)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(prompt.text)
+        .accessibilityHint("Read this aloud with the microphone")
         .accessibilityIdentifier("readingPrompt")
     }
 
@@ -188,7 +186,9 @@ struct ReadLabExerciseView: View {
                 if !speech.transcript.isEmpty { Text(speech.transcript).readLabFont(18, rounded: false) }
             }
         } else {
-            Text("Tap the word to listen, then the microphone to read aloud.")
+            Text(session.path == .words
+                 ? "Tap the microphone and say the word clearly."
+                 : "Tap the word to listen, then the microphone to read aloud.")
                 .readLabFont(18, rounded: false).multilineTextAlignment(.center)
         }
     }
@@ -276,14 +276,19 @@ struct ReadLabExerciseView: View {
             }
         } else {
             HStack(spacing: 30) {
-                Menu {
-                    Button("Practise with a Grown-up", systemImage: "person.2") { stopAudio(); adultCheckPresented = true }
-                    Button("Try Another Word", systemImage: "arrow.right") { nextPrompt() }
-                } label: { Label("More", systemImage: "ellipsis") }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.circle)
-                .controlSize(.large)
+                if session.path == .words {
+                    // First words only moves on after the word is recognised: no skip or bypass options.
+                    Color.clear.frame(width: 48, height: 48)
+                } else {
+                    Menu {
+                        Button("Practise with a Grown-up", systemImage: "person.2") { stopAudio(); adultCheckPresented = true }
+                        Button("Try Another Word", systemImage: "arrow.right") { nextPrompt() }
+                    } label: { Label("More", systemImage: "ellipsis") }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.large)
+                }
                 Spacer(minLength: 8)
                 ReadLabMicrophoneButton(listening: speech.isListening, preparing: speech.isPreparing,
                                         finishing: speech.isFinishing, inputLevel: speech.inputLevel,
@@ -299,8 +304,8 @@ struct ReadLabExerciseView: View {
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.circle)
                         .controlSize(.large)
-                        .tint(ReadLabStyle.blue)
-                        .foregroundStyle(ReadLabStyle.ink)
+                        .tint(ReadLabStyle.actionFill)
+                        .foregroundStyle(.white)
                 } else { Color.clear.frame(width: 48, height: 48) }
             }
             .frame(maxWidth: 420)
@@ -330,21 +335,26 @@ struct ReadLabExerciseView: View {
         guard !session.answeredCurrentItem, !session.completed, scenePhase == .active else { return }
         if SpeechMatch.matches(text, target: prompt.text) {
             speech.cancel()
-            _ = store.record(success: true, path: session.path)
+            _ = store.record(success: true, path: session.path, themeID: session.themeID, item: prompt.text)
             session.practiced += 1
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.4)) { session.answeredCurrentItem = true }
         } else if final, !SpeechMatch.normalized(text).isEmpty {
             speech.cancel()
-            let changed = store.record(success: false, path: session.path)
+            let changed = store.record(success: false, path: session.path, themeID: session.themeID, item: prompt.text)
             if changed {
                 session.contentLevel = store.level(for: session.path)
                 syllablePosition = 0
                 feedback = "Let’s try a smaller step together."
-            } else { feedback = "Let’s listen once more, then try together. Take your time." }
+            } else {
+                feedback = session.path == .words
+                    ? "Not quite. Tap the microphone and say “\(prompt.text)” again."
+                    : "Let’s listen once more, then try together. Take your time."
+            }
         }
     }
     private func markAssistedReading() {
         guard !session.answeredCurrentItem else { return }
+        store.recordAssisted(path: session.path, themeID: session.themeID, item: prompt.text)
         session.practiced += 1
         session.answeredCurrentItem = true
     }
@@ -378,12 +388,12 @@ struct ReadLabExerciseView: View {
     private func answerQuestion(_ index: Int) {
         guard !session.answeredCurrentItem, !wrongOptions.contains(index) else { return }
         if index == question.answer {
-            _ = store.record(success: true, path: session.path)
+            _ = store.record(success: true, path: session.path, themeID: session.themeID, item: question.text)
             session.answeredCurrentItem = true
             feedback = ""
         } else {
             wrongOptions.insert(index)
-            let changed = store.record(success: false, path: session.path)
+            let changed = store.record(success: false, path: session.path, themeID: session.themeID, item: question.text)
             if changed {
                 session.contentLevel = store.level(for: session.path)
                 session.sectionIndex = 0

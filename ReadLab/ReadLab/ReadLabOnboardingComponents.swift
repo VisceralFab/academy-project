@@ -5,6 +5,10 @@ enum ReadLabStyle {
     static let ink = Color("Ink")
     static let background = Color("Canvas")
     static let blue = Color("Action")
+    /// Deeper companion of `blue` for filled buttons that carry white text (≈4.4:1 contrast with white).
+    static let actionFill = Color(red: 0.16, green: 0.49, blue: 0.73)
+    /// Neutral slate for secondary filled buttons (e.g. Shuffle) with white text.
+    static let secondaryFill = Color(red: 0.36, green: 0.42, blue: 0.48)
     static let sky = Color("Sky")
     static let sand = Color("Sand")
     static let coral = Color("Coral")
@@ -138,11 +142,12 @@ struct ReadLabActionButton: View {
         Button(action: action) {
             Text(title)
                 .readLabFont(22, weight: .bold)
-                .foregroundStyle(ReadLabStyle.ink)
+                .foregroundStyle(.white)
                 .padding(.horizontal, 32)
                 .padding(.vertical, 18)
                 .frame(minWidth: 170, minHeight: 58)
-                .background(ReadLabStyle.blue, in: Capsule())
+                .background(ReadLabStyle.actionFill, in: Capsule())
+                .shadow(color: ReadLabStyle.actionFill.opacity(0.30), radius: 6, y: 3)
         }
         .buttonStyle(ReadLabTapStyle())
         .disabled(!enabled)

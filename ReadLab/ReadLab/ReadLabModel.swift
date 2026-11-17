@@ -75,12 +75,6 @@ enum ReadLabDiagnosis: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-struct ReadLabSpecialistInfo: Equatable, Codable {
-    var isFollowedBySpecialist = false
-    var profession = ""
-    var name = ""
-}
-
 /// The learning engine uses practice outcomes, never age or a reported diagnosis.
 struct AdaptiveDifficulty: Codable, Equatable {
     private(set) var level = 1
@@ -131,15 +125,54 @@ struct PracticeTotals: Codable, Equatable {
     var attempts = 0
 }
 
+/// One entry per exercise event, used for the carer's performance report.
+struct ExerciseRecord: Codable, Equatable, Identifiable {
+    enum Outcome: String, Codable {
+        case correct, retry, assisted, completed
+        var label: String {
+            switch self {
+            case .correct: "Correct"
+            case .retry: "Needs another try"
+            case .assisted: "Read with a grown-up"
+            case .completed: "Activity completed"
+            }
+        }
+    }
+    var id = UUID()
+    var date = Date()
+    var path: ReadingPath
+    var themeID: String
+    var item: String
+    var outcome: Outcome
+    var level: Int
+}
+
 struct ReadLabData: Codable, Equatable {
     var hasOnboarded = false
     var profile = ReadLabChildProfile()
     var preferences = ReadLabLearningPreferences()
-    var specialist = ReadLabSpecialistInfo()
     var selectedPath: ReadingPath = .hearing
     var sessions: [String: PracticeSession] = [:]
     var difficulty: [String: AdaptiveDifficulty] = [:]
     var totals: [String: PracticeTotals] = [:]
+    var exerciseLog: [ExerciseRecord] = []
+    static let maxLogEntries = 3000
+}
+
+extension ReadLabData {
+    /// Tolerant decoding: journeys saved by older versions (missing keys) still open.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = ReadLabData()
+        hasOnboarded = try c.decodeIfPresent(Bool.self, forKey: .hasOnboarded) ?? d.hasOnboarded
+        profile = try c.decodeIfPresent(ReadLabChildProfile.self, forKey: .profile) ?? d.profile
+        preferences = try c.decodeIfPresent(ReadLabLearningPreferences.self, forKey: .preferences) ?? d.preferences
+        selectedPath = try c.decodeIfPresent(ReadingPath.self, forKey: .selectedPath) ?? d.selectedPath
+        sessions = try c.decodeIfPresent([String: PracticeSession].self, forKey: .sessions) ?? d.sessions
+        difficulty = try c.decodeIfPresent([String: AdaptiveDifficulty].self, forKey: .difficulty) ?? d.difficulty
+        totals = try c.decodeIfPresent([String: PracticeTotals].self, forKey: .totals) ?? d.totals
+        exerciseLog = try c.decodeIfPresent([ExerciseRecord].self, forKey: .exerciseLog) ?? d.exerciseLog
+    }
 }
 
 @MainActor @Observable
@@ -172,8 +205,9 @@ final class ReadLabStore {
     func update(_ session: PracticeSession) { data.sessions[session.path.rawValue] = session }
 
     @discardableResult
-    func record(success: Bool, path: ReadingPath) -> Bool {
+    func record(success: Bool, path: ReadingPath, themeID: String = "", item: String = "") -> Bool {
         var difficulty = data.difficulty[path.rawValue, default: .init()]
+        let levelBefore = difficulty.level
         let changed = difficulty.record(success: success)
         data.difficulty[path.rawValue] = difficulty
         if data.preferences.trackReadingProgress {
@@ -181,8 +215,15 @@ final class ReadLabStore {
             totals.attempts += 1
             if success { totals.successfulAnswers += 1 }
             data.totals[path.rawValue] = totals
+            log(.init(path: path, themeID: themeID, item: item, outcome: success ? .correct : .retry, level: levelBefore))
         }
         return changed
+    }
+
+    /// A grown-up confirmed the reading; logged for the report but not used for difficulty.
+    func recordAssisted(path: ReadingPath, themeID: String, item: String) {
+        guard data.preferences.trackReadingProgress else { return }
+        log(.init(path: path, themeID: themeID, item: item, outcome: .assisted, level: level(for: path)))
     }
 
     func finish(_ session: inout PracticeSession) {
@@ -191,12 +232,20 @@ final class ReadLabStore {
         update(session)
         if data.preferences.trackReadingProgress {
             data.totals[session.path.rawValue, default: .init()].completedActivities += 1
+            log(.init(path: session.path, themeID: session.themeID, item: "", outcome: .completed, level: session.contentLevel))
         }
     }
 
     func setTracking(_ enabled: Bool) {
         data.preferences.trackReadingProgress = enabled
-        if !enabled { data.totals = [:] }
+        if !enabled { data.totals = [:]; data.exerciseLog = [] }
+    }
+
+    private func log(_ record: ExerciseRecord) {
+        data.exerciseLog.append(record)
+        if data.exerciseLog.count > ReadLabData.maxLogEntries {
+            data.exerciseLog.removeFirst(data.exerciseLog.count - ReadLabData.maxLogEntries)
+        }
     }
 
     private func persist() {

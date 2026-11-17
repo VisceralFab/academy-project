@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ReadLabLearningDifferencesView: View {
     @Binding var preferences: ReadLabLearningPreferences
-    @Binding var specialist: ReadLabSpecialistInfo
     let onBack: () -> Void
     let onContinue: () -> Void
     var body: some View {
@@ -31,7 +30,6 @@ struct ReadLabLearningDifferencesView: View {
                     }
                 }
                 .padding(26).readLabCard()
-                ReadLabSpecialistSection(specialist: $specialist)
             }.foregroundStyle(ReadLabStyle.ink)
         }
     }

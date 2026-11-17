@@ -28,10 +28,10 @@ struct ReadLabChildProfileView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 14)], spacing: 14) {
                         ForEach(ReadLabAgeRange.allCases) { age in
                             Button { profile.ageRange = age; nameFocused = false } label: {
-                                Text(age.rawValue).readLabFont(22, weight: .medium)
+                                Text(age.rawValue).readLabFont(22, weight: profile.ageRange == age ? .bold : .medium)
+                                    .foregroundStyle(profile.ageRange == age ? Color.white : ReadLabStyle.ink)
                                     .frame(maxWidth: .infinity, minHeight: 58)
-                                    .background(profile.ageRange == age ? ReadLabStyle.blue : .white, in: RoundedRectangle(cornerRadius: 18))
-                                    .overlay { if profile.ageRange == age { RoundedRectangle(cornerRadius: 18).strokeBorder(ReadLabStyle.ink, lineWidth: 2) } }
+                                    .background(profile.ageRange == age ? ReadLabStyle.actionFill : .white, in: RoundedRectangle(cornerRadius: 18))
                             }
                             .buttonStyle(ReadLabTapStyle())
                             .accessibilityAddTraits(profile.ageRange == age ? .isSelected : [])

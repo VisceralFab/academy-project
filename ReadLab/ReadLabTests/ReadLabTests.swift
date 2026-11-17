@@ -86,6 +86,28 @@ struct ReadLabTests {
         #expect(store.level(for: .words) == 2)
     }
 
+    @Test func exerciseLogFeedsPerformanceReport() throws {
+        let suite = "readlab.tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ReadLabStore(defaults: defaults)
+        store.data.profile.childName = "Ada"
+        var session = store.start(path: .words, theme: ReadingTheme.themes(for: .words)[0])
+        store.record(success: true, path: .words, themeID: session.themeID, item: "cat")
+        store.record(success: false, path: .words, themeID: session.themeID, item: "dog")
+        store.recordAssisted(path: .words, themeID: session.themeID, item: "bird")
+        store.finish(&session)
+        #expect(store.data.exerciseLog.map(\.outcome) == [.correct, .retry, .assisted, .completed])
+
+        let url = try ReadLabPerformanceReport.makePDF(from: store.data)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let pdf = try Data(contentsOf: url)
+        #expect(pdf.starts(with: Data("%PDF".utf8)))
+
+        store.setTracking(false)
+        #expect(store.data.exerciseLog.isEmpty)
+    }
+
     @Test func completionIsCountedOnce() throws {
         let suite = "readlab.tests.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

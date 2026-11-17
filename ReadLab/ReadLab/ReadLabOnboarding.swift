@@ -14,7 +14,7 @@ struct ReadLabOnboarding: View {
                         case .profile:
                             ReadLabChildProfileView(profile: $store.data.profile, onBack: back) { path.append(.learning) }
                         case .learning:
-                            ReadLabLearningDifferencesView(preferences: $store.data.preferences, specialist: $store.data.specialist, onBack: back) { path.append(.focus) }
+                            ReadLabLearningDifferencesView(preferences: $store.data.preferences, onBack: back) { path.append(.focus) }
                         case .focus:
                             ReadLabFocusView(selected: $store.data.selectedPath, onBack: back) { path.append(.summary) }
                         case .summary:
