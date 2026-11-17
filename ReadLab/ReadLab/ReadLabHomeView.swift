@@ -5,6 +5,7 @@ struct ReadLabHomeView: View {
     @State private var suggestionIndex = 0
     @State private var settingsPresented = false
     @State private var activeSession: PracticeSession?
+    @Environment(\.readLabAudio) private var audio
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var path: ReadingPath { store.data.selectedPath }
@@ -49,6 +50,7 @@ struct ReadLabHomeView: View {
                 .scrollIndicators(.hidden)
             }
         }
+        .onChange(of: activeSession?.id) { _, id in audio?.setScene(id == nil ? .home : .practice) }
         .onChange(of: path) { _, _ in suggestionIndex = 0 }
         .sheet(isPresented: $settingsPresented) {
             ReadLabSettingsView(store: store).presentationSizing(.form)
@@ -164,9 +166,13 @@ struct ReadLabHomeView: View {
         }.buttonStyle(ReadLabTapStyle())
     }
     private var mascot: some View {
-        Image(path.mascot).resizable().scaledToFit()
-            .frame(width: path == .words ? 240 : 360, height: 360)
-            .accessibilityHidden(true)
+        Button { audio?.playAnimal(for: path, mascot: true) } label: {
+            Image(path.mascot).resizable().scaledToFit()
+                .frame(width: path == .words ? 240 : 360, height: 360)
+        }
+        .buttonStyle(ReadLabTapStyle())
+        .accessibilityLabel("Play \(path.mascot.lowercased()) sound")
+        .accessibilityIdentifier("mascotButton")
     }
     private func resumeCard(width: CGFloat, compact: Bool) -> some View {
         let theme = savedSession.map { ReadingTheme.find($0.themeID) } ?? themes[(suggestionIndex + 1) % themes.count]
@@ -212,7 +218,16 @@ struct ReadLabHomeView: View {
     private func sessionProgress(_ session: PracticeSession) -> Double {
         guard session.path == .stories else { return session.progress }
         let story = ReadLabLibrary.story(theme: session.themeID, level: session.contentLevel)
-        return session.showingQuestions ? 0.75 + 0.25 * Double(session.questionIndex) / Double(story.questions.count) : Double(session.sectionIndex) / Double(story.sections.count + 1)
+        if session.showingQuestions {
+            return 0.75 + 0.25 * Double(session.questionIndex) / Double(story.questions.count)
+        }
+        let section = session.storyReading == nil ? story.sectionIndex(forLegacySection: session.sectionIndex) : session.sectionIndex
+        let paragraphs = story.sections[min(section, story.sections.count - 1)]
+        let reading = session.storyReading ?? StoryReadingProgress()
+        let paragraph = min(reading.paragraphIndex, paragraphs.count - 1)
+        let words = max(1, ReadingAlignment.wordCount(in: paragraphs[paragraph]))
+        let fraction = (Double(paragraph) + min(1, Double(reading.wordCount) / Double(words))) / Double(paragraphs.count)
+        return 0.75 * (Double(section) + fraction) / Double(story.sections.count)
     }
     private func begin(_ theme: ReadingTheme) {
         if let saved = savedSession, saved.themeID == theme.id { activeSession = saved }

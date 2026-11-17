@@ -17,10 +17,11 @@ final class ReadLabSpeechService {
     @ObservationIgnored private var request: SFSpeechAudioBufferRecognitionRequest?
     @ObservationIgnored private var recognitionTask: SFSpeechRecognitionTask?
     @ObservationIgnored private var timeoutTask: Task<Void, Never>?
+    @ObservationIgnored private var ownsAudioSession = false
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var resultHandler: ((String, Bool) -> Void)?
 
-    func start(target: String, onResult: @escaping (String, Bool) -> Void) async {
+    func start(target: String, duration: TimeInterval = 14, onResult: @escaping (String, Bool) -> Void) async {
         cancel()
         let token = generation
         transcript = ""
@@ -57,6 +58,7 @@ final class ReadLabSpeechService {
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
             try audioSession.setActive(true)
+            ownsAudioSession = true
             let engine = AVAudioEngine()
             self.engine = engine
             let request = SFSpeechAudioBufferRecognitionRequest()
@@ -108,7 +110,7 @@ final class ReadLabSpeechService {
             try engine.start()
             isListening = true
             timeoutTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(14))
+                try? await Task.sleep(for: .seconds(duration))
                 guard !Task.isCancelled, let self, self.generation == token else { return }
                 self.finishListening()
                 try? await Task.sleep(for: .seconds(3))
@@ -150,18 +152,23 @@ final class ReadLabSpeechService {
         isPreparing = false
         isFinishing = false
         inputLevel = 0
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if ownsAudioSession {
+            ownsAudioSession = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 }
 
 @MainActor @Observable
 final class ReadLabSpeaker {
     @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
+    @ObservationIgnored private var ownsAudioSession = false
     func speak(_ text: String) {
         stop()
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
             try AVAudioSession.sharedInstance().setActive(true)
+            ownsAudioSession = true
             let utterance = AVSpeechUtterance(string: text)
             utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
             utterance.rate = 0.38
@@ -170,6 +177,9 @@ final class ReadLabSpeaker {
     }
     func stop() {
         synthesizer.stopSpeaking(at: .immediate)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if ownsAudioSession {
+            ownsAudioSession = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 }

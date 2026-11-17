@@ -1,9 +1,16 @@
 import SwiftUI
+import AVFoundation
 
 /// Preview and launch the complete app here, including setup, home, and all three reading paths.
 struct ContentView: View {
     @State private var store: ReadLabStore
-    init(store: ReadLabStore? = nil) { _store = State(initialValue: store ?? ReadLabStore()) }
+    @State private var audio: ReadLabAudioController
+    @Environment(\.scenePhase) private var scenePhase
+    init(store: ReadLabStore? = nil) {
+        let store = store ?? ReadLabStore()
+        _store = State(initialValue: store)
+        _audio = State(initialValue: ReadLabAudioController(defaults: store.defaults))
+    }
     var body: some View {
         Group {
             if store.data.hasOnboarded {
@@ -12,6 +19,28 @@ struct ContentView: View {
                 ReadLabOnboarding(store: store)
             }
         }
+        .overlay(alignment: .bottomLeading) {
+            Button { audio.toggleMusic() } label: {
+                Image(systemName: audio.musicIsPaused ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.title3)
+                    .frame(width: 48, height: 48)
+                    .background(.regularMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(audio.musicIsPaused ? "Play background music" : "Mute background music")
+            .accessibilityIdentifier("musicButton")
+            .padding(20)
+        }
+        .environment(\.readLabAudio, audio)
+        .onAppear {
+            audio.setScene(store.data.hasOnboarded ? .home : .onboarding)
+            audio.setActive(scenePhase == .active)
+        }
+        .onChange(of: store.data.hasOnboarded) { _, finished in audio.setScene(finished ? .home : .onboarding) }
+        .onChange(of: scenePhase) { _, phase in audio.setActive(phase == .active) }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.didBecomeInactiveNotification)) { audio.handleDeactivation($0) }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.resumptionRecommendationNotification)) { audio.handleResumption($0) }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { audio.handleRouteChange($0) }
         .environment(\.useDyslexicFont, store.data.preferences.useDyslexicFont)
         .tint(ReadLabStyle.ink)
         .preferredColorScheme(.light)

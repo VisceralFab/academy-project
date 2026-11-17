@@ -35,6 +35,11 @@ final class ReadLabUITests: XCTestCase {
         let firstWords = app.buttons["readingPath-words"]
         XCTAssertTrue(firstWords.waitForExistence(timeout: 5))
         capture("03-reading-paths", app: app)
+        for path in ["hearing", "words", "stories"] {
+            XCTAssertTrue(app.buttons["mascot-\(path)"].exists)
+            app.buttons["readingPath-\(path)"].tap()
+            app.buttons["mascot-\(path)"].tap()
+        }
         firstWords.tap()
         app.buttons["Continue"].tap()
         XCTAssertTrue(app.buttons["Let’s Begin"].waitForExistence(timeout: 5))
@@ -87,9 +92,23 @@ final class ReadLabUITests: XCTestCase {
         changePath("Growing readers", app: app)
         capture("09-growing-readers-home", app: app)
         app.buttons["Let’s start read"].tap()
-        XCTAssertTrue(app.buttons["Story Questions"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["microphoneButton"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["storyReadingProgress"].label.contains("Paragraph 1 of 2"))
+        XCTAssertTrue(app.buttons["storyParagraph0"].exists)
+        XCTAssertTrue(app.buttons["storyParagraph1"].exists)
+        XCTAssertFalse(app.buttons["storyParagraph2"].exists)
+        XCTAssertFalse(app.buttons["Story Questions"].exists)
         capture("10-story", app: app)
-        app.buttons["Story Questions"].tap()
+        confirmParagraphWithGrownUp(app: app)
+        XCTAssertTrue(app.staticTexts["storyReadingProgress"].waitForExistence(timeout: 5))
+        let secondParagraph = NSPredicate(format: "label CONTAINS %@", "Paragraph 2 of 2")
+        expectation(for: secondParagraph, evaluatedWith: app.staticTexts["storyReadingProgress"])
+        waitForExpectations(timeout: 5)
+        app.buttons["closeActivityButton"].tap()
+        app.buttons["resumeSessionButton"].tap()
+        XCTAssertTrue(app.staticTexts["storyReadingProgress"].label.contains("Paragraph 2 of 2"))
+        capture("10b-story-resume", app: app)
+        confirmParagraphWithGrownUp(app: app)
         XCTAssertTrue(app.buttons["answerOption1"].waitForExistence(timeout: 5))
         capture("11-story-questions", app: app)
         app.buttons["answerOption1"].tap()
@@ -142,11 +161,27 @@ final class ReadLabUITests: XCTestCase {
 
     }
 
+    private func confirmParagraphWithGrownUp(app: XCUIApplication) {
+        app.buttons["More"].tap()
+        app.buttons["Practise with a Grown-up"].tap()
+        app.buttons["A grown-up checked this reading"].tap()
+    }
+
     private func changePath(_ title: String, app: XCUIApplication) {
         app.buttons["accountButton"].tap()
         XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 5))
-        capture("account-\(title)", app: app)
         app.buttons[title].tap()
+        if title == "Hearing sounds" {
+            for _ in 0..<3 {
+                if app.switches["Background music"].exists { break }
+                app.swipeUp()
+            }
+            capture("account-audio-and-report", app: app)
+            XCTAssertTrue(app.switches["Background music"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.switches["Animal sounds"].exists)
+            XCTAssertFalse(app.buttons["Reading familiarity"].exists)
+        }
+        capture("account-\(title)", app: app)
         app.buttons["Done"].tap()
     }
     private func capture(_ name: String, app: XCUIApplication) {

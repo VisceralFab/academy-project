@@ -4,6 +4,7 @@ struct ReadLabFocusView: View {
     @Binding var selected: ReadingPath
     let onBack: () -> Void
     let onContinue: () -> Void
+    @Environment(\.readLabAudio) private var audio
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
@@ -54,11 +55,20 @@ struct ReadLabFocusView: View {
     }
 
     private func focusCard(_ path: ReadingPath, wide: Bool) -> some View {
-        Button { selected = path } label: {
-            VStack(spacing: -24) {
+        VStack(spacing: -24) {
+            Button { audio?.playAnimal(for: path, mascot: true) } label: {
                 Image(path.mascot).resizable().scaledToFit()
                     .frame(width: path == .words ? 92 : 140, height: 114)
-                    .accessibilityHidden(true)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(ReadLabTapStyle())
+            .accessibilityLabel("Play \(path.mascot.lowercased()) sound")
+            .accessibilityIdentifier("mascot-\(path.rawValue)")
+            .zIndex(1)
+            Button {
+                selected = path
+                audio?.playAnimal(for: path, mascot: false)
+            } label: {
                 VStack(spacing: 0) {
                     Text(cardTitle(path))
                         .readLabFont(26, weight: .semibold)
@@ -80,13 +90,13 @@ struct ReadLabFocusView: View {
                 .readLabCard()
                 .overlay { RoundedRectangle(cornerRadius: 28).strokeBorder(selected == path ? ReadLabStyle.blue : .clear, lineWidth: 4) }
             }
-            .frame(width: wide ? 278 : nil)
-            .foregroundStyle(ReadLabStyle.ink)
+            .buttonStyle(ReadLabTapStyle())
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(selected == path ? .isSelected : [])
+            .accessibilityIdentifier("readingPath-\(path.rawValue)")
         }
-        .buttonStyle(ReadLabTapStyle())
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(selected == path ? .isSelected : [])
-        .accessibilityIdentifier("readingPath-\(path.rawValue)")
+        .frame(width: wide ? 278 : nil)
+        .foregroundStyle(ReadLabStyle.ink)
     }
 
     private func cardTitle(_ path: ReadingPath) -> String {

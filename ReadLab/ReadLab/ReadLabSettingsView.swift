@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ReadLabSettingsView: View {
     @Bindable var store: ReadLabStore
+    @Environment(\.readLabAudio) private var audio
     @Environment(\.dismiss) private var dismiss
     @State private var report: ReportFile?
     @State private var reportError: String?
@@ -40,11 +41,17 @@ struct ReadLabSettingsView: View {
                 Section("Reading preferences") {
                     Toggle("Use OpenDyslexic Bold", isOn: $store.data.preferences.useDyslexicFont)
                     Toggle("Track reading progress", isOn: Binding(get: { store.data.preferences.trackReadingProgress }, set: { store.setTracking($0) }))
-                    if store.data.preferences.trackReadingProgress {
-                        NavigationLink("Practice overview") { ReadLabProgressView(store: store) }
+                }
+                if let audio {
+                    Section("Sound") {
+                        Toggle("Background music", isOn: Binding(get: { audio.musicEnabled }, set: { audio.musicEnabled = $0 }))
+                        Toggle("Animal sounds", isOn: Binding(get: { audio.effectsEnabled }, set: { audio.effectsEnabled = $0 }))
                     }
                 }
                 Section {
+                    if store.data.preferences.trackReadingProgress {
+                        NavigationLink("Practice overview") { ReadLabProgressView(store: store) }
+                    }
                     Button { exportReport() } label: {
                         Label("Download performance report", systemImage: "arrow.down.doc.fill")
                             .fontWeight(.semibold)
@@ -67,10 +74,6 @@ struct ReadLabSettingsView: View {
                     Picker("Age range", selection: $store.data.profile.ageRange) {
                         Text("Not specified").tag(Optional<ReadLabAgeRange>.none)
                         ForEach(ReadLabAgeRange.allCases) { Text($0.rawValue).tag(Optional($0)) }
-                    }
-                    Picker("Reading familiarity", selection: $store.data.profile.readingFamiliarity) {
-                        Text("Not specified").tag(Optional<ReadLabReadingFamiliarity>.none)
-                        ForEach(ReadLabReadingFamiliarity.allCases) { Text($0.rawValue).tag(Optional($0)) }
                     }
                 }
                 Section("Learning support") {

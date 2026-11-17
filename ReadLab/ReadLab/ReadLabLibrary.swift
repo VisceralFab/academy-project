@@ -40,6 +40,26 @@ struct ReadingStory: Equatable {
     let title: String
     let sections: [[String]]
     let questions: [StoryQuestion]
+    private let legacySectionStarts: [Int]
+
+    init(title: String, sections: [[String]], questions: [StoryQuestion]) {
+        self.title = title
+        self.questions = questions
+        var compactSections: [[String]] = []
+        var starts: [Int] = []
+        for section in sections {
+            starts.append(compactSections.count)
+            for start in stride(from: 0, to: section.count, by: 2) {
+                compactSections.append(Array(section[start..<min(start + 2, section.count)]))
+            }
+        }
+        self.sections = compactSections
+        self.legacySectionStarts = starts
+    }
+
+    func sectionIndex(forLegacySection index: Int) -> Int {
+        legacySectionStarts[min(max(0, index), legacySectionStarts.count - 1)]
+    }
 }
 
 enum ReadLabLibrary {

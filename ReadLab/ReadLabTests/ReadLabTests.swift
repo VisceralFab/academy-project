@@ -1,6 +1,8 @@
 import Foundation
+import AVFoundation
 import Testing
 import UIKit
+import SwiftUI
 @testable import ReadLab
 
 @MainActor
@@ -169,7 +171,7 @@ struct ReadLabTests {
             var previousWordCount = 0
             for level in 1...5 {
                 let story = ReadLabLibrary.story(theme: theme.id, level: level)
-                #expect(story.sections.allSatisfy { !$0.isEmpty && $0.count <= 3 })
+                #expect(story.sections.allSatisfy { !$0.isEmpty && $0.count <= 2 })
                 #expect(story.questions.count >= 3)
                 #expect(story.questions.allSatisfy { $0.options.indices.contains($0.answer) })
                 let words = story.sections.flatMap { $0 }.joined(separator: " ").split(separator: " ").count
@@ -177,6 +179,140 @@ struct ReadLabTests {
                 previousWordCount = words
             }
         }
+    }
+
+    @Test func readingAlignsOnlyCorrectOrderedWords() {
+        let target = "The little monkey walks west."
+        let partial = ReadingAlignment(transcript: "THE little", target: target)
+        #expect(partial.matchedCount == 2 && !partial.isComplete && !partial.containsMismatch)
+        let skipped = ReadingAlignment(transcript: "The monkey walks west", target: target)
+        #expect(skipped.matchedCount == 1 && !skipped.isComplete && skipped.containsMismatch)
+        let wrong = ReadingAlignment(transcript: "The little donkey walks west", target: target)
+        #expect(wrong.matchedCount == 2 && !wrong.isComplete)
+        #expect(ReadingAlignment(transcript: "monkey walks west!", target: target, startingAt: 2).isComplete)
+        #expect(!ReadingAlignment(transcript: "monkey walks east", target: target, startingAt: 2).isComplete)
+        #expect(!ReadingAlignment(transcript: "The little monkey walks west extra", target: target).isComplete)
+        #expect(!ReadingAlignment(transcript: "", target: target).isComplete)
+        #expect(!ReadingAlignment(transcript: "west", target: "west west").isComplete)
+        #expect(ReadingAlignment(transcript: "fox's red gate!", target: "Fox’s red gate.").isComplete)
+    }
+
+    @Test func storyTracksRevisionsAndAdvancesOnlyCompletedParagraphs() {
+        let story = ReadingStory(title: "A walk", sections: [["The monkey walks.", "He sees a gate.", "He waves."]], questions: [])
+        #expect(story.sections.map(\.count) == [2, 1])
+        var session = PracticeSession(path: .stories, themeID: "journey")
+        session.prepareStoryReading(in: story)
+        session.advanceStoryParagraph(in: story)
+        #expect(session.storyReading?.paragraphIndex == 0 && !session.showingQuestions)
+        session.updateStoryReading(transcript: "The monkey", startingAt: 0, in: story)
+        #expect(session.storyReading?.wordCount == 2)
+        session.updateStoryReading(transcript: "The donkey", startingAt: 0, in: story)
+        #expect(session.storyReading?.wordCount == 1) // A revised partial result retracts an uncertain word.
+        session.updateStoryReading(transcript: "monkey walks", startingAt: 1, in: story)
+        #expect(session.storyReading?.paragraphComplete == true)
+        #expect(session.updateStoryReading(transcript: "monkey walks", startingAt: 1, in: story) == nil)
+        #expect(session.practiced == 1)
+        session.advanceStoryParagraph(in: story)
+        #expect(session.storyReading == StoryReadingProgress(paragraphIndex: 1))
+        #expect(session.sectionIndex == 0 && !session.showingQuestions)
+        session.updateStoryReading(transcript: "he sees a gate", startingAt: 0, in: story)
+        session.advanceStoryParagraph(in: story)
+        #expect(session.sectionIndex == 1 && session.storyReading?.paragraphIndex == 0)
+        session.updateStoryReading(transcript: "he waves", startingAt: 0, in: story)
+        session.advanceStoryParagraph(in: story)
+        #expect(session.showingQuestions && !session.answeredCurrentItem)
+        #expect(session.practiced == 3)
+    }
+
+    @Test func storyProgressSurvivesSaveAndLegacySessionsStillDecode() throws {
+        var session = PracticeSession(path: .stories, themeID: "journey")
+        session.storyReading = StoryReadingProgress(paragraphIndex: 1, wordCount: 7)
+        let restored = try JSONDecoder().decode(PracticeSession.self, from: JSONEncoder().encode(session))
+        #expect(restored == session)
+        var legacy = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(session)) as? [String: Any])
+        legacy.removeValue(forKey: "storyReading")
+        legacy["sectionIndex"] = 1
+        var migrated = try JSONDecoder().decode(PracticeSession.self, from: JSONSerialization.data(withJSONObject: legacy))
+        #expect(migrated.storyReading == nil)
+        let story = ReadingStory(title: "Legacy", sections: [["a", "b", "c"], ["d", "e"]], questions: [])
+        migrated.prepareStoryReading(in: story)
+        #expect(migrated.sectionIndex == 2)
+        #expect(migrated.storyReading == StoryReadingProgress())
+    }
+
+    @Test func wordHighlightPreservesOriginalTypographyAndPunctuation() {
+        let original = "“Fox’s” red gate."
+        let highlighted = ReadingAlignment.highlighted(original, through: 2)
+        #expect(String(highlighted.characters) == original)
+        #expect(highlighted.runs.first?.backgroundColor == ReadLabStyle.sky)
+        #expect(highlighted.runs.last?.backgroundColor == nil)
+        #expect(ReadingAlignment.highlighted(original, through: 0).runs.first?.backgroundColor == nil)
+    }
+
+    @Test func allEightAudioFilesDecodeAndAnimalMappingIsCorrect() throws {
+        for sound in ReadLabSound.allCases {
+            let url = try #require(sound.url, "Missing bundled audio: \(sound.rawValue)")
+            let player = try AVAudioPlayer(contentsOf: url)
+            #expect(player.duration > 0)
+            #expect(player.numberOfChannels > 0)
+        }
+        #expect(ReadLabSound.animal(for: .hearing, mascot: false) == .elephantCard)
+        #expect(ReadLabSound.animal(for: .hearing, mascot: true) == .elephantMascot)
+        #expect(ReadLabSound.animal(for: .words, mascot: false) == .parrotCard)
+        #expect(ReadLabSound.animal(for: .words, mascot: true) == .parrotMascot)
+        #expect(ReadLabSound.animal(for: .stories, mascot: false) == .monkeyCard)
+        #expect(ReadLabSound.animal(for: .stories, mascot: true) == .monkeyMascot)
+    }
+
+    @Test func musicFollowsSceneMuteAndInterruptionAndRemembersPreferences() throws {
+        let suite = "readlab.audio-tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let audio = ReadLabAudioController(defaults: defaults)
+        defer { audio.setActive(false) }
+        #expect(audio.requestedMusic == nil)
+        audio.setActive(true)
+        #expect(audio.requestedMusic == .onboarding)
+        audio.setScene(.home)
+        #expect(audio.requestedMusic == .home)
+        audio.setScene(.practice)
+        #expect(audio.requestedMusic == nil)
+        audio.setScene(.home)
+        audio.setInterrupted(true)
+        #expect(audio.requestedMusic == nil)
+        audio.setInterrupted(false)
+        #expect(audio.requestedMusic == .home)
+        audio.handleRouteChange(Notification(name: AVAudioSession.routeChangeNotification, userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue]))
+        #expect(audio.requestedMusic == nil)
+        audio.toggleMusic()
+        #expect(audio.requestedMusic == .home)
+        audio.musicEnabled = false
+        audio.effectsEnabled = false
+        #expect(audio.requestedMusic == nil)
+        let restored = ReadLabAudioController(defaults: defaults)
+        #expect(!restored.musicEnabled && !restored.effectsEnabled)
+    }
+
+    @Test func onboardingMusicFadesBeforeHomeAndStopsForPractice() async throws {
+        let suite = "readlab.music-transition-tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let audio = ReadLabAudioController(defaults: defaults)
+        defer { audio.setActive(false) }
+        audio.setActive(true)
+        try await Task.sleep(for: .seconds(0.2))
+        #expect(audio.playingMusic == .onboarding && audio.isMusicPlaying)
+        audio.setScene(.home)
+        try await Task.sleep(for: .seconds(0.2))
+        #expect(audio.playingMusic == .onboarding) // The outgoing fade must finish first.
+        try await Task.sleep(for: .seconds(1.2))
+        #expect(audio.playingMusic == .home && audio.isMusicPlaying)
+        audio.setScene(.practice)
+        #expect(!audio.isMusicPlaying)
+        audio.setScene(.onboarding)
+        audio.setActive(false) // Cancels a pending transition; it must not restart in the background.
+        try await Task.sleep(for: .seconds(1.4))
+        #expect(!audio.isMusicPlaying)
     }
 
     @Test func bundledFontIsRegistered() {

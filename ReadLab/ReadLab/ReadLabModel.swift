@@ -110,6 +110,7 @@ struct PracticeSession: Codable, Equatable, Identifiable {
     var itemIndex = 0
     var sectionIndex = 0
     var questionIndex = 0
+    var storyReading: StoryReadingProgress?
     var showingQuestions = false
     var answeredCurrentItem = false
     var completed = false
@@ -179,7 +180,7 @@ extension ReadLabData {
 final class ReadLabStore {
     var data: ReadLabData { didSet { persist() } }
     var storageMessage: String?
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
     private let storageKey = "readlab.journey.v1"
 
     init(defaults: UserDefaults = .standard) {
