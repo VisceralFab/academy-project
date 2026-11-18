@@ -10,6 +10,22 @@ enum ReadLabSound: String, CaseIterable {
     case parrotCard = "Parrot 1", parrotMascot = "Parrot 2"
     case monkeyCard = "Monkey 1", monkeyMascot = "Monkey 2"
 
+    /// Edit these percentages (0–100) to set the playback volume of each file.
+    private var volumePercent: Float {
+        switch self {
+        case .onboarding: 20
+        case .home: 20
+        case .elephantCard: 80
+        case .elephantMascot: 80
+        case .parrotCard: 80
+        case .parrotMascot: 80
+        case .monkeyCard: 40 // Monkey 1 plays at half its previous volume.
+        case .monkeyMascot: 80
+        }
+    }
+
+    var volume: Float { min(100, max(0, volumePercent)) / 100 }
+
     var url: URL? {
         Bundle.main.url(forResource: rawValue, withExtension: "mp3")
             ?? Bundle.main.url(forResource: rawValue, withExtension: "mp3", subdirectory: "Sounds")
@@ -71,12 +87,13 @@ final class ReadLabAudioController {
 
     func playAnimal(for path: ReadingPath, mascot: Bool) {
         guard effectsEnabled, isActive, !interrupted, scene != .practice, !previews else { return }
+        let sound = ReadLabSound.animal(for: path, mascot: mascot)
+        guard let url = sound.url else { return }
         effectPlayer?.stop()
         do {
             try activateAmbientAudio()
-            guard let url = ReadLabSound.animal(for: path, mascot: mascot).url else { return }
             let player = try AVAudioPlayer(contentsOf: url)
-            player.volume = 0.8
+            player.volume = sound.volume
             effectPlayer = player
             player.play()
         } catch { /* Mascot interaction remains available without audio output. */ }
@@ -128,6 +145,7 @@ final class ReadLabAudioController {
         return scene == .home ? .home : .onboarding
     }
 
+    /// Fade between music tracks and pause playback while an exercise uses audio.
     private func refreshMusic() {
         transition?.cancel()
         transition = nil
@@ -139,7 +157,7 @@ final class ReadLabAudioController {
             do {
                 try activateAmbientAudio()
                 if !player.isPlaying { player.volume = 0; player.play() }
-                player.setVolume(0.20, fadeDuration: 0.6)
+                player.setVolume(desired.volume, fadeDuration: 0.6)
             } catch { }
             return
         }
@@ -159,7 +177,7 @@ final class ReadLabAudioController {
                 self.musicPlayer = player
                 self.playingMusic = desired
                 player.play()
-                player.setVolume(0.20, fadeDuration: 0.8)
+                player.setVolume(desired.volume, fadeDuration: 0.8)
             } catch { /* Music is optional; navigation and reading continue normally. */ }
         }
     }

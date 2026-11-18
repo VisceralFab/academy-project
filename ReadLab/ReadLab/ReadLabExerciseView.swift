@@ -9,7 +9,7 @@ struct ReadLabExerciseView: View {
     @State private var zoom = 0.35
     @State private var syllablePosition = 0.0
     @State private var feedback = ""
-    @State private var readingOffset = 0
+    @State private var storySpeechCursor = StorySpeechCursor()
     @State private var wrongOptions: Set<Int> = []
     @State private var adultCheckPresented = false
     @Environment(\.dismiss) private var dismiss
@@ -64,9 +64,12 @@ struct ReadLabExerciseView: View {
                             .onChange(of: session.sectionIndex) { _, _ in proxy.scrollTo("practiceTop", anchor: .top) }
                             .onChange(of: reading.paragraphIndex) { _, index in proxy.scrollTo("storyParagraph-\(index)", anchor: .center) }
                             .onChange(of: session.questionIndex) { _, _ in proxy.scrollTo("practiceTop", anchor: .top) }
+                            .onChange(of: session.showingQuestions) { _, showing in
+                                if showing { proxy.scrollTo("practiceTop", anchor: .top) }
+                            }
                         }
                         .shadow(color: ReadLabStyle.ink.opacity(0.08), radius: 12, y: 6)
-                        controls(compact: compact)
+                        controls()
                     }
                 }
                 .frame(maxWidth: 1300)
@@ -195,12 +198,8 @@ struct ReadLabExerciseView: View {
             }
         } else if !feedback.isEmpty {
             Text(feedback).readLabFont(20, weight: .medium).multilineTextAlignment(.center)
-        } else if speech.isListening {
-            VStack(spacing: 10) {
-                Label("I’m listening…", systemImage: "waveform").readLabFont(21, weight: .medium)
-                ProgressView(value: Double(speech.inputLevel)).frame(width: 180).accessibilityLabel("Microphone input level")
-                if !speech.transcript.isEmpty { Text(speech.transcript).readLabFont(18, rounded: false) }
-            }
+        } else if speech.isListening || speech.isFinishing {
+            listeningFeedback(alignment: .center)
         } else {
             Text(session.path == .words
                  ? "Tap the microphone and say the word clearly."
@@ -240,14 +239,13 @@ struct ReadLabExerciseView: View {
             } else {
                 Text(story.title).readLabFont(compact ? 32 : 44, weight: .semibold)
                     .accessibilityAddTraits(.isHeader)
-                if !feedback.isEmpty { Text(feedback).readLabFont(18, weight: .medium).padding().background(ReadLabStyle.sand.opacity(0.5), in: RoundedRectangle(cornerRadius: 16)) }
-                Text("Paragraph \(reading.paragraphIndex + 1) of \(paragraphs.count) · \(reading.wordCount) of \(ReadingAlignment.wordCount(in: activeParagraph)) words read")
+                Text("Paragraph \(reading.paragraphIndex + 1) of \(paragraphs.count) · \(reading.wordCount) of \(StoryText.wordCount(in: activeParagraph)) words read")
                     .readLabFont(17, weight: .medium, rounded: false)
                     .accessibilityIdentifier("storyReadingProgress")
                 ForEach(Array(paragraphs.enumerated()), id: \.offset) { index, paragraph in
-                    let count = index < reading.paragraphIndex ? ReadingAlignment.wordCount(in: paragraph) : (index == reading.paragraphIndex ? reading.wordCount : 0)
+                    let count = index < reading.paragraphIndex ? StoryText.wordCount(in: paragraph) : (index == reading.paragraphIndex ? reading.wordCount : 0)
                     Button { playPreview(paragraph) } label: {
-                        Text(ReadingAlignment.highlighted(paragraph, through: count))
+                        Text(StoryText.highlighted(paragraph, through: count))
                             .readLabFont(24 + zoom * 22)
                             .lineSpacing(12)
                             .multilineTextAlignment(.leading)
@@ -261,19 +259,18 @@ struct ReadLabExerciseView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Listen to this paragraph")
-                    .accessibilityValue("\(count) of \(ReadingAlignment.wordCount(in: paragraph)) words read")
+                    .accessibilityValue("\(count) of \(StoryText.wordCount(in: paragraph)) words read")
                     .accessibilityIdentifier("storyParagraph\(index)")
                     .id("storyParagraph-\(index)")
                 }
                 storyFeedback
-
             }
         }
         .frame(maxWidth: 960, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
-    private func controls(compact: Bool) -> some View {
+    private func controls() -> some View {
         VStack(spacing: 12) {
             if session.path == .words || (session.path == .stories && !session.showingQuestions) {
                 HStack(spacing: 16) {
@@ -303,7 +300,7 @@ struct ReadLabExerciseView: View {
                         Button("Practise with a Grown-up", systemImage: "person.2") { stopAudio(); adultCheckPresented = true }
                     } label: { Label("More", systemImage: "ellipsis") }
                     .labelStyle(.iconOnly).buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.large)
-                    microphone(completed: reading.paragraphComplete, action: toggleStoryMicrophone)
+                    microphone(completed: reading.paragraphComplete, action: toggleReadingMicrophone)
                 }
             } else {
                 Button("Read Again", systemImage: "book") {
@@ -329,11 +326,7 @@ struct ReadLabExerciseView: View {
                     .controlSize(.large)
                 }
                 Spacer(minLength: 8)
-                microphone(completed: session.answeredCurrentItem) {
-                    speaker.stop()
-                    if speech.isListening { speech.finishListening() }
-                    else { Task { await speech.start(target: prompt.text, onResult: handleSpeech) } }
-                }
+                microphone(completed: session.answeredCurrentItem, action: toggleReadingMicrophone)
                 Spacer(minLength: 8)
                 if session.answeredCurrentItem {
                     Button(session.itemIndex == 5 ? "Finish" : "Next Word", systemImage: "arrow.right") { nextPrompt() }
@@ -369,39 +362,59 @@ struct ReadLabExerciseView: View {
                 }
             }
         } else if speech.isListening || speech.isFinishing {
-            Label(speech.isFinishing ? "Checking your reading…" : "I’m listening…", systemImage: "waveform")
-                .readLabFont(18, weight: .medium)
+            listeningFeedback(alignment: .leading)
+        } else if !feedback.isEmpty {
+            Text(feedback).readLabFont(18, rounded: false)
         } else {
-            Text("Tap the microphone and read the outlined paragraph. Start at the first unhighlighted word.")
+            Text(reading.wordCount == 0
+                 ? "Tap the microphone and start reading aloud."
+                 : "Tap the microphone to continue at the first unhighlighted word.")
                 .readLabFont(18, rounded: false)
         }
     }
 
-    private func toggleStoryMicrophone() {
-        speaker.stop()
-        guard !reading.paragraphComplete else { return }
-        if speech.isListening { speech.finishListening(); return }
-        feedback = ""
-        readingOffset = reading.wordCount
-        let target = SpeechMatch.normalized(activeParagraph).split(separator: " ").dropFirst(readingOffset).joined(separator: " ")
-        Task { await speech.start(target: target, duration: max(30, min(90, Double(ReadingAlignment.wordCount(in: target)) * 1.5)), onResult: handleStorySpeech) }
+    /// Show the recognizer's live output before comparing it with the exercise text.
+    private func listeningFeedback(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 10) {
+            Label(speech.isFinishing ? "Checking your reading…" : "I’m listening…", systemImage: "waveform")
+                .readLabFont(21, weight: .medium)
+            if speech.isListening {
+                ProgressView(value: Double(speech.inputLevel))
+                    .frame(width: 180)
+                    .accessibilityLabel("Microphone input level")
+            }
+            if !speech.transcript.isEmpty {
+                Text(verbatim: speech.transcript)
+                    .readLabFont(18, rounded: false)
+                    .accessibilityLabel("Heard: \(speech.transcript)")
+                    .accessibilityIdentifier("liveSpeechTranscript")
+            }
+        }
     }
 
-    private func handleStorySpeech(_ text: String, _ final: Bool) {
-        guard !session.completed, !session.showingQuestions, !reading.paragraphComplete, scenePhase == .active else { return }
-        guard let alignment = session.updateStoryReading(transcript: text, startingAt: readingOffset, in: story) else { return }
-        if alignment.isComplete {
-            speech.cancel()
-            _ = store.record(success: true, path: .stories, themeID: session.themeID, item: activeParagraph)
-            feedback = ""
-        } else if final, !SpeechMatch.normalized(text).isEmpty {
-            speech.cancel()
-            if alignment.containsMismatch {
-                _ = store.record(success: false, path: .stories, themeID: session.themeID, item: activeParagraph)
+    private func toggleReadingMicrophone() {
+        speaker.stop()
+        if speech.isListening { speech.finishListening(); return }
+        feedback = ""
+        if session.path == .stories {
+            storySpeechCursor = StorySpeechCursor()
+            Task {
+                await speech.start(onNewSegment: { storySpeechCursor = StorySpeechCursor() }, onResult: handleStorySpeech)
             }
-            // Keep this version of the story stable, even if the next activity adapts its level.
-            feedback = "Take your time. Tap the microphone and continue at the first unhighlighted word."
+        } else {
+            Task { await speech.start(target: prompt.text, onResult: handleSpeech) }
         }
+    }
+
+    private func handleStorySpeech(_ text: String, _: Bool) {
+        guard scenePhase == .active else { return }
+        var cursor = storySpeechCursor
+        let completedParagraphs = session.readStoryTranscript(text, cursor: &cursor, in: story)
+        storySpeechCursor = cursor
+        for paragraph in completedParagraphs {
+            _ = store.record(success: true, path: .stories, themeID: session.themeID, item: paragraph)
+        }
+        if session.showingQuestions { speech.cancel() }
     }
 
     private func playPreview(_ text: String) {
@@ -447,7 +460,7 @@ struct ReadLabExerciseView: View {
         if session.path == .stories {
             guard !session.showingQuestions, !reading.paragraphComplete else { return }
             store.recordAssisted(path: .stories, themeID: session.themeID, item: activeParagraph)
-            session.storyReading?.wordCount = ReadingAlignment.wordCount(in: activeParagraph)
+            session.storyReading?.wordCount = StoryText.wordCount(in: activeParagraph)
             session.storyReading?.paragraphComplete = true
             session.practiced += 1
             return

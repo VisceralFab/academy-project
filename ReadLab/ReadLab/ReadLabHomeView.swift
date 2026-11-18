@@ -225,7 +225,7 @@ struct ReadLabHomeView: View {
         let paragraphs = story.sections[min(section, story.sections.count - 1)]
         let reading = session.storyReading ?? StoryReadingProgress()
         let paragraph = min(reading.paragraphIndex, paragraphs.count - 1)
-        let words = max(1, ReadingAlignment.wordCount(in: paragraphs[paragraph]))
+        let words = max(1, StoryText.wordCount(in: paragraphs[paragraph]))
         let fraction = (Double(paragraph) + min(1, Double(reading.wordCount) / Double(words))) / Double(paragraphs.count)
         return 0.75 * (Double(section) + fraction) / Double(story.sections.count)
     }

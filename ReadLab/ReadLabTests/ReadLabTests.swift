@@ -181,47 +181,118 @@ struct ReadLabTests {
         }
     }
 
-    @Test func readingAlignsOnlyCorrectOrderedWords() {
-        let target = "The little monkey walks west."
-        let partial = ReadingAlignment(transcript: "THE little", target: target)
-        #expect(partial.matchedCount == 2 && !partial.isComplete && !partial.containsMismatch)
-        let skipped = ReadingAlignment(transcript: "The monkey walks west", target: target)
-        #expect(skipped.matchedCount == 1 && !skipped.isComplete && skipped.containsMismatch)
-        let wrong = ReadingAlignment(transcript: "The little donkey walks west", target: target)
-        #expect(wrong.matchedCount == 2 && !wrong.isComplete)
-        #expect(ReadingAlignment(transcript: "monkey walks west!", target: target, startingAt: 2).isComplete)
-        #expect(!ReadingAlignment(transcript: "monkey walks east", target: target, startingAt: 2).isComplete)
-        #expect(!ReadingAlignment(transcript: "The little monkey walks west extra", target: target).isComplete)
-        #expect(!ReadingAlignment(transcript: "", target: target).isComplete)
-        #expect(!ReadingAlignment(transcript: "west", target: "west west").isComplete)
-        #expect(ReadingAlignment(transcript: "fox's red gate!", target: "Fox’s red gate.").isComplete)
-    }
-
-    @Test func storyTracksRevisionsAndAdvancesOnlyCompletedParagraphs() {
-        let story = ReadingStory(title: "A walk", sections: [["The monkey walks.", "He sees a gate.", "He waves."]], questions: [])
-        #expect(story.sections.map(\.count) == [2, 1])
+    @Test func storyKeepsEveryRecognizedWordAcrossRevisionsAndPauses() {
+        let story = ReadingStory(title: "A walk", sections: [["He sees a river. His friend helps him cross.", "He sees a gate.", "He waves."]], questions: [])
         var session = PracticeSession(path: .stories, themeID: "journey")
+        var cursor = StorySpeechCursor()
         session.prepareStoryReading(in: story)
         session.advanceStoryParagraph(in: story)
-        #expect(session.storyReading?.paragraphIndex == 0 && !session.showingQuestions)
-        session.updateStoryReading(transcript: "The monkey", startingAt: 0, in: story)
-        #expect(session.storyReading?.wordCount == 2)
-        session.updateStoryReading(transcript: "The donkey", startingAt: 0, in: story)
-        #expect(session.storyReading?.wordCount == 1) // A revised partial result retracts an uncertain word.
-        session.updateStoryReading(transcript: "monkey walks", startingAt: 1, in: story)
-        #expect(session.storyReading?.paragraphComplete == true)
-        #expect(session.updateStoryReading(transcript: "monkey walks", startingAt: 1, in: story) == nil)
+        #expect(session.storyReading?.paragraphIndex == 0)
+
+        for (transcript, expected) in [
+            ("He", 1), ("He sees a river", 4), ("He sees", 4), ("He sees a river", 4),
+            ("She sees a river", 4), ("She sees a river, friend helps", 4),
+            ("She sees a river, friend helps, um, his friend", 6),
+            ("She sees a river, friend helps, um, his friend helps", 7)
+        ] {
+            #expect(!session.updateStoryReading(transcript: transcript, cursor: &cursor, in: story))
+            #expect(session.storyReading?.wordCount == expected)
+        }
+
+        // A new recognition request starts after a pause and uses the saved position.
+        cursor = StorySpeechCursor()
+        #expect(!session.updateStoryReading(transcript: "him", cursor: &cursor, in: story))
+        #expect(session.storyReading?.wordCount == 8)
+        #expect(session.updateStoryReading(transcript: "him cross, okay", cursor: &cursor, in: story))
+        #expect(!session.updateStoryReading(transcript: "him cross, okay", cursor: &cursor, in: story))
         #expect(session.practiced == 1)
         session.advanceStoryParagraph(in: story)
         #expect(session.storyReading == StoryReadingProgress(paragraphIndex: 1))
         #expect(session.sectionIndex == 0 && !session.showingQuestions)
-        session.updateStoryReading(transcript: "he sees a gate", startingAt: 0, in: story)
+
+        cursor = StorySpeechCursor()
+        #expect(session.updateStoryReading(transcript: "he sees a gate", cursor: &cursor, in: story))
         session.advanceStoryParagraph(in: story)
         #expect(session.sectionIndex == 1 && session.storyReading?.paragraphIndex == 0)
-        session.updateStoryReading(transcript: "he waves", startingAt: 0, in: story)
+        cursor = StorySpeechCursor()
+        #expect(session.updateStoryReading(transcript: "he waves", cursor: &cursor, in: story))
         session.advanceStoryParagraph(in: story)
         #expect(session.showingQuestions && !session.answeredCurrentItem)
         #expect(session.practiced == 3)
+    }
+
+    @Test func storyContinuesIntoSecondParagraphInTheSameTranscript() {
+        let story = ReadLabLibrary.story(theme: "journey", level: 1)
+        let first = story.sections[0][0]
+        let second = story.sections[0][1]
+        var session = PracticeSession(path: .stories, themeID: "journey")
+        var cursor = StorySpeechCursor()
+        session.prepareStoryReading(in: story)
+
+        #expect(session.readStoryTranscript(first + " He sees", cursor: &cursor, in: story) == [first])
+        #expect(session.storyReading?.paragraphIndex == 1)
+        #expect(session.storyReading?.wordCount == 2)
+        #expect(session.readStoryTranscript(first + " He sees", cursor: &cursor, in: story).isEmpty)
+        #expect(session.storyReading?.wordCount == 2)
+        #expect(session.readStoryTranscript(first + " He sees red bag", cursor: &cursor, in: story).isEmpty)
+        #expect(session.storyReading?.wordCount == 2)
+        #expect(session.readStoryTranscript(first + " " + second, cursor: &cursor, in: story) == [second])
+        #expect(session.showingQuestions)
+        #expect(session.practiced == 2)
+    }
+
+    @Test func storyResumesSecondParagraphAfterTheRecognizerStartsANewSegment() {
+        let story = ReadingStory(title: "Two sentences", sections: [["Go west.", "Go east."]], questions: [])
+        var session = PracticeSession(path: .stories, themeID: "journey")
+        var cursor = StorySpeechCursor()
+        session.prepareStoryReading(in: story)
+
+        #expect(session.readStoryTranscript("Go west", cursor: &cursor, in: story) == ["Go west."])
+        #expect(session.storyReading == StoryReadingProgress(paragraphIndex: 1))
+        #expect(session.readStoryTranscript("Go west", cursor: &cursor, in: story).isEmpty)
+        #expect(session.storyReading?.wordCount == 0)
+
+        cursor = StorySpeechCursor()
+        #expect(session.readStoryTranscript("Red bag", cursor: &cursor, in: story).isEmpty)
+        #expect(session.storyReading?.wordCount == 0)
+        #expect(session.readStoryTranscript("Red bag, go", cursor: &cursor, in: story).isEmpty)
+        #expect(session.storyReading?.wordCount == 1)
+        #expect(session.readStoryTranscript("Red bag, go east", cursor: &cursor, in: story) == ["Go east."])
+        #expect(session.showingQuestions)
+    }
+
+    @Test func storyAcceptsAReplacementFragmentAtTheSecondParagraph() {
+        let story = ReadingStory(title: "A walk", sections: [["The fox sees a gate.", "A bird is lost."]], questions: [])
+        var session = PracticeSession(path: .stories, themeID: "torii")
+        var cursor = StorySpeechCursor()
+        session.prepareStoryReading(in: story)
+
+        #expect(session.readStoryTranscript("The fox sees a gate", cursor: &cursor, in: story) == ["The fox sees a gate."])
+        #expect(session.readStoryTranscript("A bird", cursor: &cursor, in: story).isEmpty)
+        #expect(session.storyReading?.wordCount == 2)
+        #expect(session.readStoryTranscript("A bird is lost", cursor: &cursor, in: story) == ["A bird is lost."])
+        #expect(session.showingQuestions)
+    }
+
+    @Test func storyCursorDoesNotSkipWordsOrCountDuplicateCallbacks() {
+        var cursor = StorySpeechCursor()
+        let target = StoryText.words(in: "Go go go back to Fox’s gate.")
+        #expect(cursor.advance(transcript: "Go", target: target, from: 0) == 1)
+        #expect(cursor.advance(transcript: "Go", target: target, from: 1) == 1)
+        #expect(cursor.advance(transcript: "Go go", target: target, from: 1) == 2)
+        #expect(cursor.advance(transcript: "Go", target: target, from: 2) == 2)
+        #expect(cursor.advance(transcript: "Go go back", target: target, from: 2) == 2)
+        #expect(cursor.advance(transcript: "Go go go back", target: target, from: 2) == 4)
+        #expect(cursor.advance(transcript: "Go go go back to fox's gate!", target: target, from: 4) == target.count)
+    }
+
+    @Test func storyCursorAcceptsNewFragmentsAndCorrections() {
+        var cursor = StorySpeechCursor()
+        let target = StoryText.words(in: "A bird is lost. Torii helps it.")
+        #expect(cursor.advance(transcript: "A bird is lost", target: target, from: 0) == 4)
+        #expect(cursor.advance(transcript: "Tory helps", target: target, from: 4) == 4)
+        #expect(cursor.advance(transcript: "Torii helps", target: target, from: 4) == 6)
+        #expect(cursor.advance(transcript: "Torii helps it", target: target, from: 6) == 7)
     }
 
     @Test func storyProgressSurvivesSaveAndLegacySessionsStillDecode() throws {
@@ -242,11 +313,11 @@ struct ReadLabTests {
 
     @Test func wordHighlightPreservesOriginalTypographyAndPunctuation() {
         let original = "“Fox’s” red gate."
-        let highlighted = ReadingAlignment.highlighted(original, through: 2)
+        let highlighted = StoryText.highlighted(original, through: 2)
         #expect(String(highlighted.characters) == original)
         #expect(highlighted.runs.first?.backgroundColor == ReadLabStyle.sky)
         #expect(highlighted.runs.last?.backgroundColor == nil)
-        #expect(ReadingAlignment.highlighted(original, through: 0).runs.first?.backgroundColor == nil)
+        #expect(StoryText.highlighted(original, through: 0).runs.first?.backgroundColor == nil)
     }
 
     @Test func allEightAudioFilesDecodeAndAnimalMappingIsCorrect() throws {
