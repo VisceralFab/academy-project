@@ -274,6 +274,50 @@ struct ReadLabTests {
         #expect(session.showingQuestions)
     }
 
+    @Test func storyAcceptsKnownSoundAlikesOnlyForTheNextWord() {
+        let story = ReadingStory(title: "A walk", sections: [["The western hills."]], questions: [])
+        var session = PracticeSession(path: .stories, themeID: "journey")
+        var cursor = StorySpeechCursor()
+        session.prepareStoryReading(in: story)
+
+        #expect(session.readStoryTranscript("The heels", cursor: &cursor, in: story).isEmpty)
+        #expect(session.storyReading?.wordCount == 1)
+        #expect(session.readStoryTranscript("The western wheels", cursor: &cursor, in: story).isEmpty)
+        #expect(session.storyReading?.wordCount == 2)
+        #expect(session.readStoryTranscript("Heels", cursor: &cursor, in: story) == ["The western hills."])
+        #expect(session.showingQuestions)
+
+        #expect(!SpeechMatch.matches("heels", target: "hills"))
+    }
+
+    @Test func storyAcceptsCouldWhenSpeechReturnsCoolOrCall() {
+        let target = StoryText.words(in: "She could wait.")
+        for spoken in ["cool", "call"] {
+            var cursor = StorySpeechCursor()
+            #expect(cursor.advance(transcript: "She \(spoken) wait", target: target, from: 0) == 3)
+        }
+        var cursor = StorySpeechCursor()
+        #expect(cursor.advance(transcript: "She cold wait", target: target, from: 0) == 1)
+        #expect(cursor.advance(transcript: "She call", target: target, from: 1) == 2)
+        #expect(cursor.advance(transcript: "She call", target: target, from: 2) == 2)
+    }
+
+    @Test func storyUsesSpeechAlternativesAtTheMatchingWordPosition() {
+        let text = "She head the bird."
+        let target = StoryText.words(in: "She heard the bird.")
+        let range = (text as NSString).range(of: "head")
+        for alternatives in [
+            SpeechWordAlternatives(text: text, segments: [.init(range: range, alternatives: ["heard"])]),
+            SpeechWordAlternatives(text: text, transcripts: ["She heard the bird."])
+        ] {
+            var cursor = StorySpeechCursor()
+            #expect(cursor.advance(transcript: text, target: target, from: 0, alternatives: alternatives) == 4)
+        }
+        var cursor = StorySpeechCursor()
+        let misaligned = SpeechWordAlternatives(text: text, transcripts: ["She heard the fox.", "She heard the little bird."])
+        #expect(cursor.advance(transcript: text, target: target, from: 0, alternatives: misaligned) == 1)
+    }
+
     @Test func storyCursorDoesNotSkipWordsOrCountDuplicateCallbacks() {
         var cursor = StorySpeechCursor()
         let target = StoryText.words(in: "Go go go back to Fox’s gate.")
@@ -290,8 +334,8 @@ struct ReadLabTests {
         var cursor = StorySpeechCursor()
         let target = StoryText.words(in: "A bird is lost. Torii helps it.")
         #expect(cursor.advance(transcript: "A bird is lost", target: target, from: 0) == 4)
-        #expect(cursor.advance(transcript: "Tory helps", target: target, from: 4) == 4)
-        #expect(cursor.advance(transcript: "Torii helps", target: target, from: 4) == 6)
+        #expect(cursor.advance(transcript: "Tony helps", target: target, from: 4) == 4)
+        #expect(cursor.advance(transcript: "Tory helps", target: target, from: 4) == 6)
         #expect(cursor.advance(transcript: "Torii helps it", target: target, from: 6) == 7)
     }
 

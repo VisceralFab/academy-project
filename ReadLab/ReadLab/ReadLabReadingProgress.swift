@@ -26,36 +26,101 @@ enum StoryText {
     }
 }
 
+/// Other readings of the same audio, keyed by word position in the displayed transcript.
+struct SpeechWordAlternatives {
+    struct Segment {
+        let range: NSRange
+        let alternatives: [String]
+    }
+
+    private var wordsByPosition: [Int: Set<Substring>] = [:]
+
+    init(text: String = "", segments: [Segment] = [], transcripts: [String] = []) {
+        let words = StoryText.words(in: text)
+        for segment in segments where !segment.alternatives.isEmpty {
+            guard let range = Range(segment.range, in: text),
+                  let word = StoryText.words(in: String(text[range])).onlyWord else { continue }
+            let index = StoryText.wordCount(in: String(text[..<range.lowerBound]))
+            guard words.indices.contains(index), words[index] == word else { continue }
+            for alternative in segment.alternatives {
+                if let word = StoryText.words(in: alternative).onlyWord {
+                    wordsByPosition[index, default: []].insert(word)
+                }
+            }
+        }
+        // Only use whole-transcript candidates with a single substitution and no shifted words.
+        for transcript in transcripts {
+            let candidate = StoryText.words(in: transcript)
+            guard words.count == candidate.count,
+                  let index = words.indices.first(where: { words[$0] != candidate[$0] }),
+                  words[(index + 1)...].elementsEqual(candidate[(index + 1)...]) else { continue }
+            wordsByPosition[index, default: []].insert(candidate[index])
+        }
+    }
+
+    func contains(_ expected: Substring, at position: Int) -> Bool {
+        wordsByPosition[position]?.contains(expected) == true
+    }
+}
+
+private extension Array where Element == Substring {
+    var onlyWord: Substring? { count == 1 ? first : nil }
+}
+
+/// Accept known recognition mix-ups only when they match the next word in the story.
+private enum StoryWordMatch {
+    private static let alternatives: [Substring: Set<Substring>] = [
+        "could": ["cool", "call"],
+        "hills": ["heels", "heals"],
+        "torii": ["tori", "tory"],
+        "sees": ["seas", "seize"],
+        "heard": ["herd"],
+        "find": ["fined"],
+        "knew": ["new"],
+        "new": ["knew"],
+        "made": ["maid"],
+        "sail": ["sale"],
+        "through": ["threw"],
+        "wait": ["weight"]
+    ]
+
+    static func matches(_ spoken: Substring, expected: Substring) -> Bool {
+        spoken == expected || alternatives[expected]?.contains(spoken) == true
+    }
+}
+
 /// Tracks which words in a recognition request have already moved the reading cursor.
 struct StorySpeechCursor {
     private var previousTranscript: [Substring] = []
     private var consumedWords = 0
 
-    mutating func advance(transcript: String, target: [Substring], from wordCount: Int) -> Int {
+    mutating func advance(transcript: String, target: [Substring], from wordCount: Int, alternatives: SpeechWordAlternatives = .init()) -> Int {
         guard target.indices.contains(wordCount) else { return wordCount }
         let words = StoryText.words(in: transcript)
         // Keep the cursor when a partial result temporarily loses its trailing words.
         if words.count < previousTranscript.count && previousTranscript.starts(with: words) { return wordCount }
-        let start = unconsumedStart(in: words, expecting: target[wordCount])
+        let start = unconsumedStart(in: words, expecting: target[wordCount], alternatives: alternatives)
         previousTranscript = words
         consumedWords = start
 
         var next = wordCount
         for index in start..<words.count where next < target.count {
             // Ignore filler and corrections until the next required word is heard.
-            guard words[index] == target[next] else { continue }
+            guard StoryWordMatch.matches(words[index], expected: target[next]) ||
+                  alternatives.contains(target[next], at: index) else { continue }
             next += 1
             consumedWords = index + 1
         }
         return next
     }
 
-    private func unconsumedStart(in words: [Substring], expecting nextWord: Substring) -> Int {
+    private func unconsumedStart(in words: [Substring], expecting nextWord: Substring, alternatives: SpeechWordAlternatives) -> Int {
         // Partial transcripts are cumulative, but the recognizer can revise earlier text.
         let prefix = zip(previousTranscript, words).prefix { $0 == $1 }.count
         guard prefix < consumedWords else { return consumedWords }
         // Speech can replace an earlier phrase with a new fragment after a pause.
-        if prefix == 0 && words.first == nextWord { return 0 }
+        if prefix == 0, let first = words.first,
+           StoryWordMatch.matches(first, expected: nextWord) || alternatives.contains(nextWord, at: 0) { return 0 }
         let changes = words.difference(from: previousTranscript)
         let removed = Set(changes.removals.compactMap { change -> Int? in
             guard case let .remove(offset, _, _) = change, offset < consumedWords else { return nil }
@@ -90,13 +155,13 @@ extension PracticeSession {
     }
 
     /// Credits newly heard words without erasing the part the child has already read.
-    mutating func updateStoryReading(transcript: String, cursor: inout StorySpeechCursor, in story: ReadingStory) -> Bool {
+    mutating func updateStoryReading(transcript: String, cursor: inout StorySpeechCursor, in story: ReadingStory, alternatives: SpeechWordAlternatives = .init()) -> Bool {
         guard path == .stories, !completed, !showingQuestions,
               var reading = storyReading, !reading.paragraphComplete,
               story.sections.indices.contains(sectionIndex),
               story.sections[sectionIndex].indices.contains(reading.paragraphIndex) else { return false }
         let target = StoryText.words(in: story.sections[sectionIndex][reading.paragraphIndex])
-        let next = cursor.advance(transcript: transcript, target: target, from: reading.wordCount)
+        let next = cursor.advance(transcript: transcript, target: target, from: reading.wordCount, alternatives: alternatives)
         guard next > reading.wordCount else { return false }
         reading.wordCount = next
         reading.paragraphComplete = next == target.count
@@ -106,9 +171,9 @@ extension PracticeSession {
     }
 
     /// Carry unconsumed words into the next paragraph while the same microphone request is active.
-    mutating func readStoryTranscript(_ transcript: String, cursor: inout StorySpeechCursor, in story: ReadingStory) -> [String] {
+    mutating func readStoryTranscript(_ transcript: String, cursor: inout StorySpeechCursor, in story: ReadingStory, alternatives: SpeechWordAlternatives = .init()) -> [String] {
         var completedParagraphs: [String] = []
-        while updateStoryReading(transcript: transcript, cursor: &cursor, in: story) {
+        while updateStoryReading(transcript: transcript, cursor: &cursor, in: story, alternatives: alternatives) {
             if let reading = storyReading {
                 completedParagraphs.append(story.sections[sectionIndex][reading.paragraphIndex])
             }

@@ -19,7 +19,7 @@ enum ReadLabSound: String, CaseIterable {
         case .elephantMascot: 80
         case .parrotCard: 80
         case .parrotMascot: 80
-        case .monkeyCard: 40 // Monkey 1 plays at half its previous volume.
+        case .monkeyCard: 15 // Monkey 1
         case .monkeyMascot: 80
         }
     }

@@ -406,10 +406,10 @@ struct ReadLabExerciseView: View {
         }
     }
 
-    private func handleStorySpeech(_ text: String, _: Bool) {
+    private func handleStorySpeech(_ text: String, _: Bool, _ alternatives: SpeechWordAlternatives) {
         guard scenePhase == .active else { return }
         var cursor = storySpeechCursor
-        let completedParagraphs = session.readStoryTranscript(text, cursor: &cursor, in: story)
+        let completedParagraphs = session.readStoryTranscript(text, cursor: &cursor, in: story, alternatives: alternatives)
         storySpeechCursor = cursor
         for paragraph in completedParagraphs {
             _ = store.record(success: true, path: .stories, themeID: session.themeID, item: paragraph)
@@ -435,7 +435,7 @@ struct ReadLabExerciseView: View {
         .accessibilityIdentifier("activityCompleted")
     }
 
-    private func handleSpeech(_ text: String, _ final: Bool) {
+    private func handleSpeech(_ text: String, _ final: Bool, _: SpeechWordAlternatives) {
         guard !session.answeredCurrentItem, !session.completed, scenePhase == .active else { return }
         if SpeechMatch.matches(text, target: prompt.text) {
             speech.cancel()

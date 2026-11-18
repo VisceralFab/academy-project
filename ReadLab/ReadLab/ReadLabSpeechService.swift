@@ -20,14 +20,15 @@ final class ReadLabSpeechService {
     @ObservationIgnored private var tapInstalled = false
     @ObservationIgnored private var requestID = UUID()
     @ObservationIgnored private var segmentTranscript = ""
+    @ObservationIgnored private var segmentAlternatives = SpeechWordAlternatives()
     @ObservationIgnored private var recognitionTask: SFSpeechRecognitionTask?
     @ObservationIgnored private var timeoutTask: Task<Void, Never>?
     @ObservationIgnored private var ownsAudioSession = false
     @ObservationIgnored private var generation = UUID()
-    @ObservationIgnored private var resultHandler: ((String, Bool) -> Void)?
+    @ObservationIgnored private var resultHandler: ((String, Bool, SpeechWordAlternatives) -> Void)?
 
     /// Single words can supply a hint. Story reading uses open transcription across segments.
-    func start(target: String? = nil, onNewSegment: (() -> Void)? = nil, onResult: @escaping (String, Bool) -> Void) async {
+    func start(target: String? = nil, onNewSegment: (() -> Void)? = nil, onResult: @escaping (String, Bool, SpeechWordAlternatives) -> Void) async {
         cancel()
         let token = generation
         transcript = ""
@@ -112,9 +113,15 @@ final class ReadLabSpeechService {
         request.shouldReportPartialResults = true
         if let target { request.contextualStrings = [target] }
         segmentTranscript = ""
+        segmentAlternatives = SpeechWordAlternatives()
         recognitionTask?.cancel()
         let task = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            let text = result?.bestTranscription.formattedString
+            let best = result?.bestTranscription
+            let text = best?.formattedString
+            let segments = onNewSegment == nil ? [] : (best?.segments ?? []).map {
+                SpeechWordAlternatives.Segment(range: $0.substringRange, alternatives: $0.alternativeSubstrings)
+            }
+            let candidates = onNewSegment == nil ? [] : (result?.transcriptions ?? []).prefix(4).map(\.formattedString)
             let final = result?.isFinal ?? false
             let failed = error != nil
             Task { @MainActor [weak self] in
@@ -122,7 +129,9 @@ final class ReadLabSpeechService {
                 if let text, !text.isEmpty {
                     self.segmentTranscript = text
                     self.transcript = text
-                    self.resultHandler?(text, final)
+                    let alternatives = SpeechWordAlternatives(text: text, segments: segments, transcripts: candidates)
+                    self.segmentAlternatives = alternatives
+                    self.resultHandler?(text, final, alternatives)
                     guard self.requestID == id else { return }
                 }
                 if final {
@@ -174,9 +183,10 @@ final class ReadLabSpeechService {
             guard !Task.isCancelled, let self, self.requestID == id else { return }
             let lastText = self.segmentTranscript
             let handler = self.resultHandler
+            let alternatives = self.segmentAlternatives
             self.cancel()
             if lastText.isEmpty { self.message = "I didn’t catch any words. Tap the microphone to try again." }
-            else { handler?(lastText, true) }
+            else { handler?(lastText, true, alternatives) }
         }
     }
 
