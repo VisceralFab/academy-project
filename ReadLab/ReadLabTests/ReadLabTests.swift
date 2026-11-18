@@ -290,16 +290,42 @@ struct ReadLabTests {
         #expect(!SpeechMatch.matches("heels", target: "hills"))
     }
 
-    @Test func storyAcceptsCouldWhenSpeechReturnsCoolOrCall() {
-        let target = StoryText.words(in: "She could wait.")
-        for spoken in ["cool", "call"] {
-            var cursor = StorySpeechCursor()
-            #expect(cursor.advance(transcript: "She \(spoken) wait", target: target, from: 0) == 3)
-        }
+    @Test func phoneticMatcherUsesBundledCMUdictAndAllPronunciations() throws {
+        let license = Bundle.main.url(forResource: "CMUdict-LICENSE", withExtension: "txt")
+            ?? Bundle.main.url(forResource: "CMUdict-LICENSE", withExtension: "txt", subdirectory: "Pronunciation")
+        let licenseURL = try #require(license)
+        #expect(try String(contentsOf: licenseURL, encoding: .utf8).contains("Carnegie Mellon University"))
+        let matcher = PhoneticMatcher(configuration: .init(allowedVowelPairs: []))
+        #expect(matcher.matches("sea", expected: "see"))
+        #expect(matcher.matches("too", expected: "two"))
+        #expect(matcher.matches("red", expected: "read"))
+        #expect(matcher.matches("reed", expected: "read"))
+        #expect(!matcher.matches("heels", expected: "hills"))
+    }
+
+    @Test func phoneticMatcherLimitsNearMatchesAndHandlesUnknownWords() {
+        let matcher = PhoneticMatcher()
+        #expect(matcher.matches("heels", expected: "hills"))
+        #expect(!matcher.matches("wheels", expected: "hills"))
+        #expect(!matcher.matches("bed", expected: "bad"))
+        #expect(!matcher.matches("cool", expected: "could"))
+        #expect(!matcher.matches("call", expected: "could"))
+        #expect(matcher.matches("zzreadlabxx", expected: "zzreadlabxx"))
+        #expect(!matcher.matches("zzreadlabyy", expected: "zzreadlabxx"))
+        let custom = PhoneticMatcher(configuration: .init(allowedVowelPairs: [.init("AE", "EH")]))
+        #expect(custom.matches("bed", expected: "bad"))
+        #expect(!custom.matches("heels", expected: "hills"))
+    }
+
+    @Test func storyDoesNotCreditRevisedSoundAlikesTwice() {
         var cursor = StorySpeechCursor()
-        #expect(cursor.advance(transcript: "She cold wait", target: target, from: 0) == 1)
-        #expect(cursor.advance(transcript: "She call", target: target, from: 1) == 2)
-        #expect(cursor.advance(transcript: "She call", target: target, from: 2) == 2)
+        let target = StoryText.words(in: "See sea hills heels.")
+        #expect(cursor.advance(transcript: "See", target: target, from: 0) == 1)
+        #expect(cursor.advance(transcript: "Sea", target: target, from: 1) == 1)
+        #expect(cursor.advance(transcript: "Sea sea heels", target: target, from: 1) == 3)
+        #expect(cursor.advance(transcript: "See sea hills", target: target, from: 3) == 3)
+        #expect(cursor.advance(transcript: "See sea", target: target, from: 3) == 3)
+        #expect(cursor.advance(transcript: "See sea hills heels", target: target, from: 3) == 4)
     }
 
     @Test func storyUsesSpeechAlternativesAtTheMatchingWordPosition() {
@@ -332,11 +358,11 @@ struct ReadLabTests {
 
     @Test func storyCursorAcceptsNewFragmentsAndCorrections() {
         var cursor = StorySpeechCursor()
-        let target = StoryText.words(in: "A bird is lost. Torii helps it.")
+        let target = StoryText.words(in: "A bird is lost. Tori helps it.")
         #expect(cursor.advance(transcript: "A bird is lost", target: target, from: 0) == 4)
         #expect(cursor.advance(transcript: "Tony helps", target: target, from: 4) == 4)
         #expect(cursor.advance(transcript: "Tory helps", target: target, from: 4) == 6)
-        #expect(cursor.advance(transcript: "Torii helps it", target: target, from: 6) == 7)
+        #expect(cursor.advance(transcript: "Tori helps it", target: target, from: 6) == 7)
     }
 
     @Test func storyProgressSurvivesSaveAndLegacySessionsStillDecode() throws {

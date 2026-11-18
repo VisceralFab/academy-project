@@ -13,14 +13,14 @@ enum ReadLabSound: String, CaseIterable {
     /// Edit these percentages (0–100) to set the playback volume of each file.
     private var volumePercent: Float {
         switch self {
-        case .onboarding: 20
-        case .home: 20
-        case .elephantCard: 80
-        case .elephantMascot: 80
-        case .parrotCard: 80
-        case .parrotMascot: 80
-        case .monkeyCard: 15 // Monkey 1
-        case .monkeyMascot: 80
+        case .onboarding: 15
+        case .home: 15
+        case .elephantCard: 40
+        case .elephantMascot: 40
+        case .parrotCard: 40
+        case .parrotMascot: 40
+        case .monkeyCard: 7 // Monkey 1
+        case .monkeyMascot: 40
         }
     }
 

@@ -67,46 +67,26 @@ private extension Array where Element == Substring {
     var onlyWord: Substring? { count == 1 ? first : nil }
 }
 
-/// Accept known recognition mix-ups only when they match the next word in the story.
-private enum StoryWordMatch {
-    private static let alternatives: [Substring: Set<Substring>] = [
-        "could": ["cool", "call"],
-        "hills": ["heels", "heals"],
-        "torii": ["tori", "tory"],
-        "sees": ["seas", "seize"],
-        "heard": ["herd"],
-        "find": ["fined"],
-        "knew": ["new"],
-        "new": ["knew"],
-        "made": ["maid"],
-        "sail": ["sale"],
-        "through": ["threw"],
-        "wait": ["weight"]
-    ]
-
-    static func matches(_ spoken: Substring, expected: Substring) -> Bool {
-        spoken == expected || alternatives[expected]?.contains(spoken) == true
-    }
-}
-
 /// Tracks which words in a recognition request have already moved the reading cursor.
 struct StorySpeechCursor {
     private var previousTranscript: [Substring] = []
     private var consumedWords = 0
+    private let phonetics = PhoneticMatcher()
 
     mutating func advance(transcript: String, target: [Substring], from wordCount: Int, alternatives: SpeechWordAlternatives = .init()) -> Int {
         guard target.indices.contains(wordCount) else { return wordCount }
         let words = StoryText.words(in: transcript)
-        // Keep the cursor when a partial result temporarily loses its trailing words.
-        if words.count < previousTranscript.count && previousTranscript.starts(with: words) { return wordCount }
-        let start = unconsumedStart(in: words, expecting: target[wordCount], alternatives: alternatives)
+        // A new spelling of the same sound may revise a credited word, but cannot credit it twice.
+        let prefix = zip(previousTranscript, words).prefix { phonetics.matches($1, expected: $0) }.count
+        if words.count < previousTranscript.count && prefix == words.count { return wordCount }
+        let start = unconsumedStart(in: words, sharedPrefix: prefix, expecting: target[wordCount], alternatives: alternatives)
         previousTranscript = words
         consumedWords = start
 
         var next = wordCount
         for index in start..<words.count where next < target.count {
             // Ignore filler and corrections until the next required word is heard.
-            guard StoryWordMatch.matches(words[index], expected: target[next]) ||
+            guard phonetics.matches(words[index], expected: target[next]) ||
                   alternatives.contains(target[next], at: index) else { continue }
             next += 1
             consumedWords = index + 1
@@ -114,13 +94,11 @@ struct StorySpeechCursor {
         return next
     }
 
-    private func unconsumedStart(in words: [Substring], expecting nextWord: Substring, alternatives: SpeechWordAlternatives) -> Int {
-        // Partial transcripts are cumulative, but the recognizer can revise earlier text.
-        let prefix = zip(previousTranscript, words).prefix { $0 == $1 }.count
+    private func unconsumedStart(in words: [Substring], sharedPrefix prefix: Int, expecting nextWord: Substring, alternatives: SpeechWordAlternatives) -> Int {
         guard prefix < consumedWords else { return consumedWords }
         // Speech can replace an earlier phrase with a new fragment after a pause.
         if prefix == 0, let first = words.first,
-           StoryWordMatch.matches(first, expected: nextWord) || alternatives.contains(nextWord, at: 0) { return 0 }
+           phonetics.matches(first, expected: nextWord) || alternatives.contains(nextWord, at: 0) { return 0 }
         let changes = words.difference(from: previousTranscript)
         let removed = Set(changes.removals.compactMap { change -> Int? in
             guard case let .remove(offset, _, _) = change, offset < consumedWords else { return nil }
