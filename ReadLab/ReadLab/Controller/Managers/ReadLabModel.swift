@@ -37,7 +37,9 @@ struct ReadLabChildProfile: Equatable, Codable {
     var childName = ""
     var ageRange: ReadLabAgeRange?
     var readingFamiliarity: ReadLabReadingFamiliarity?
-    var isValid: Bool { !childName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var isValid: Bool {
+        ageRange != nil && !childName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 }
 
 enum ReadLabAgeRange: String, CaseIterable, Identifiable, Codable {
@@ -116,6 +118,8 @@ struct PracticeSession: Codable, Equatable, Identifiable {
     var completed = false
     // Keep content stable across launches even if the next task changes difficulty.
     var contentLevel = 1
+    // Nil identifies older sessions that must retain their original text and quiz.
+    var storyAgeRange: ReadLabAgeRange?
     var practiced = 0
     var progress: Double { completed ? 1 : min(0.95, Double(itemIndex) / 6) }
 }
@@ -198,7 +202,10 @@ final class ReadLabStore {
     func session(for path: ReadingPath) -> PracticeSession? { data.sessions[path.rawValue] }
 
     func start(path: ReadingPath, theme: ReadingTheme) -> PracticeSession {
-        let session = PracticeSession(path: path, themeID: theme.id, contentLevel: level(for: path))
+        var session = PracticeSession(path: path, themeID: theme.id, contentLevel: level(for: path))
+        if ReadLabIllustratedStories.themes.contains(theme) {
+            session.storyAgeRange = data.profile.ageRange ?? .fourFive
+        }
         update(session)
         return session
     }

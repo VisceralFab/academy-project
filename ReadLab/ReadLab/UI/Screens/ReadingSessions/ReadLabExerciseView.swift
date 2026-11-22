@@ -6,6 +6,7 @@ struct ReadLabExerciseView: View {
     @State private var session: PracticeSession
     @State private var speech = ReadLabSpeechService()
     @State private var speaker = ReadLabSpeaker()
+    @State private var effects = ReadLabPracticeEffectPlayer()
     @State private var syllablePosition = 0.0
     @State private var feedback = ""
     @State private var storySpeechCursor = StorySpeechCursor()
@@ -18,11 +19,16 @@ struct ReadLabExerciseView: View {
     @State private var preview: Preview?
     @State private var playedPreviewID: UUID?
     @State private var lastHearingPrompt: VoicePrompt?
-    @State private var parrotReplyIndex: Int?
+    @State private var recognizedPromptIndex: Int?
 
     private struct Preview: Equatable {
+        enum Content: Equatable {
+            case narration(String)
+            case effect(ReadLabSound)
+        }
+
         let id = UUID()
-        let text: String
+        let content: Content
     }
 
     private struct VoicePrompt: Equatable {
@@ -35,7 +41,8 @@ struct ReadLabExerciseView: View {
         case idle
         case story(level: Int, replay: Preview?)
         case word(VoicePrompt, hearFirst: Bool, replay: Preview?)
-        case advance(index: Int, parrotReply: String?)
+        case feedback(Preview)
+        case advance(index: Int, correct: Bool, parrotReply: String?)
     }
 
     private struct AudioTaskID: Equatable {
@@ -48,6 +55,7 @@ struct ReadLabExerciseView: View {
         let session: PracticeSession
         let forward: Bool
     }
+    @Environment(\.readLabAudio) private var audio
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -57,14 +65,14 @@ struct ReadLabExerciseView: View {
         self.store = store
         var restored = initialSession
         if restored.path == .stories {
-            restored.prepareStoryReading(in: ReadLabLibrary.story(theme: restored.themeID, level: restored.contentLevel))
+            restored.prepareStoryReading(in: ReadLabLibrary.story(theme: restored.themeID, level: restored.contentLevel, age: restored.storyAgeRange))
         }
         _session = State(initialValue: restored)
     }
     private var theme: ReadingTheme { ReadingTheme.find(session.themeID) }
     private var prompts: [ReadingPrompt] { ReadLabLibrary.prompts(theme: session.themeID, level: session.contentLevel) }
     private var prompt: ReadingPrompt { prompts[min(session.itemIndex, prompts.count - 1)] }
-    private var story: ReadingStory { ReadLabLibrary.story(theme: session.themeID, level: session.contentLevel) }
+    private var story: ReadingStory { ReadLabLibrary.story(theme: session.themeID, level: session.contentLevel, age: session.storyAgeRange) }
     private var question: StoryQuestion { story.questions[min(session.questionIndex, story.questions.count - 1)] }
 
     private var reading: StoryReadingProgress { session.storyReading ?? StoryReadingProgress() }
@@ -76,15 +84,24 @@ struct ReadLabExerciseView: View {
     private var audioPlan: AudioPlan {
         guard visible, scenePhase == .active, !session.completed, !audioInterrupted, !adultCheckPresented else { return .idle }
         if session.path == .stories {
-            guard !session.showingQuestions, !reading.paragraphComplete else { return .idle }
+            if session.showingQuestions {
+                return preview.map(AudioPlan.feedback) ?? .idle
+            }
+            guard !reading.paragraphComplete else { return .idle }
             return .story(level: session.contentLevel, replay: preview)
         }
         if session.answeredCurrentItem {
-            let reply = parrotReplyIndex == session.itemIndex ? prompt.text : nil
-            return .advance(index: session.itemIndex, parrotReply: reply)
+            let correct = recognizedPromptIndex == session.itemIndex
+            let reply = correct && session.path == .words ? prompt.text : nil
+            return .advance(index: session.itemIndex, correct: correct, parrotReply: reply)
         }
         let current = VoicePrompt(index: session.itemIndex, level: session.contentLevel, text: prompt.text)
         return .word(current, hearFirst: session.path == .hearing, replay: preview)
+    }
+
+    private var quizFeedbackPending: Bool {
+        if case .feedback(let cue) = audioPlan { return cue.id != playedPreviewID }
+        return false
     }
 
     private var audioTaskID: AudioTaskID {
@@ -363,6 +380,17 @@ struct ReadLabExerciseView: View {
                 .padding(.vertical, 8)
                 .background(.white.opacity(0.9), in: Capsule())
                 .accessibilityIdentifier("exerciseProgress")
+            if audio?.effectsEnabled == true {
+                Button { requestSound(.monkeyMascot) } label: {
+                    Image("Monkey").resizable().scaledToFit()
+                        .frame(width: 28, height: 28)
+                        .frame(width: 44, height: 44)
+                        .background(.white.opacity(0.9), in: Circle())
+                }
+                .buttonStyle(ReadLabTapStyle())
+                .accessibilityLabel("Play monkey sound")
+                .accessibilityIdentifier("storyMascotSound")
+            }
             grownUpMenu
         }
     }
@@ -400,10 +428,8 @@ struct ReadLabExerciseView: View {
         let height = max(1, size.height - margin * 2)
         let art = ReadLabIllustratedStories.artwork(for: theme, page: page)
         return ZStack(alignment: .top) {
-            ReadLabMissionArt(name: art)
-                .aspectRatio(contentMode: compact ? .fit : .fill)
-                .frame(width: width, height: height)
-                .clipped()
+            ReadLabStoryArtwork(name: art, mode: compact ? .fit : .fill,
+                                viewport: CGSize(width: width, height: height))
             ScrollView {
                 Button { requestPreview(paragraph) } label: {
                     Text(StoryText.highlighted(paragraph, through: count))
@@ -527,7 +553,7 @@ struct ReadLabExerciseView: View {
             session.storyReading = StoryReadingProgress()
         }.buttonStyle(.bordered).controlSize(.large)
         ReadLabActionButton(title: session.questionIndex == story.questions.count - 1 ? "Finish Story" : "Next Question",
-                            action: nextQuestion, enabled: session.answeredCurrentItem)
+                            action: nextQuestion, enabled: session.answeredCurrentItem && !quizFeedbackPending)
     }
 
     @ViewBuilder private var voiceStatus: some View {
@@ -576,9 +602,13 @@ struct ReadLabExerciseView: View {
         switch key.plan {
         case .idle:
             return
-        case .advance(_, let reply):
-            // Finish the parrot’s reply before changing the prompt and restarting capture.
-            if let reply { _ = await speaker.speak(reply, pitch: 1.75) }
+        case .feedback(let replay):
+            await playReplayIfNeeded(replay)
+        case .advance(_, let correct, let reply):
+            // Play the confirmation and parrot reply with capture paused.
+            if correct { await effects.play(.correct) }
+            guard !Task.isCancelled, key == audioTaskID else { return }
+            if let reply { _ = await speaker.speakParrot(reply) }
             try? await Task.sleep(for: .milliseconds(650))
             guard !Task.isCancelled, key == audioTaskID else { return }
             nextPrompt()
@@ -624,7 +654,13 @@ struct ReadLabExerciseView: View {
 
     private func playReplayIfNeeded(_ replay: Preview?) async {
         guard let replay, replay.id != playedPreviewID else { return }
-        await playBeforeListening(replay.text)
+        switch replay.content {
+        case .narration(let text):
+            await playBeforeListening(text)
+        case .effect(let sound):
+            await effects.play(sound)
+            try? await Task.sleep(for: .milliseconds(250))
+        }
         if !Task.isCancelled { playedPreviewID = replay.id }
     }
 
@@ -642,13 +678,18 @@ struct ReadLabExerciseView: View {
         for paragraph in completedParagraphs {
             _ = store.record(success: true, path: .stories, themeID: session.themeID, item: paragraph)
         }
-        if session.showingQuestions { speech.cancel() }
+        if !completedParagraphs.isEmpty { requestSound(.correct) }
     }
 
     private func requestPreview(_ text: String) {
         stopAudio()
         feedback = ""
-        preview = Preview(text: text)
+        preview = Preview(content: .narration(text))
+    }
+
+    private func requestSound(_ sound: ReadLabSound) {
+        stopAudio()
+        preview = Preview(content: .effect(sound))
     }
 
     private var completion: some View {
@@ -669,7 +710,7 @@ struct ReadLabExerciseView: View {
             speech.cancel()
             _ = store.record(success: true, path: session.path, themeID: session.themeID, item: prompt.text)
             session.practiced += 1
-            if session.path == .words { parrotReplyIndex = session.itemIndex }
+            recognizedPromptIndex = session.itemIndex
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.4)) { session.answeredCurrentItem = true }
         } else if final, !SpeechMatch.normalized(text).isEmpty {
             speech.cancel()
@@ -702,7 +743,7 @@ struct ReadLabExerciseView: View {
     private func nextPrompt() {
         stopAudio()
         preview = nil
-        parrotReplyIndex = nil
+        recognizedPromptIndex = nil
         guard !session.completed else { return }
         if session.itemIndex >= 5 {
             // Skipping every prompt is an exploration, not a completed practice activity.
@@ -741,10 +782,11 @@ struct ReadLabExerciseView: View {
             _ = store.record(success: true, path: session.path, themeID: session.themeID, item: question.text)
             session.answeredCurrentItem = true
             feedback = ""
+            requestSound(.correct)
         } else {
             wrongOptions.insert(index)
             let changed = store.record(success: false, path: session.path, themeID: session.themeID, item: question.text)
-            if changed && store.level(for: session.path) < session.contentLevel {
+            if session.storyAgeRange == nil, changed && store.level(for: session.path) < session.contentLevel {
                 session.contentLevel = store.level(for: session.path)
                 session.sectionIndex = 0
                 session.storyReading = StoryReadingProgress()
@@ -756,7 +798,8 @@ struct ReadLabExerciseView: View {
         }
     }
     private func nextQuestion() {
-        guard session.answeredCurrentItem else { return }
+        guard session.answeredCurrentItem, !quizFeedbackPending else { return }
+        preview = nil
         if session.questionIndex >= story.questions.count - 1 { store.finish(&session) }
         else {
             session.questionIndex += 1
@@ -771,7 +814,11 @@ struct ReadLabExerciseView: View {
         store.update(session)
     }
 
-    private func stopAudio() { speech.cancel(); speaker.stop() }
+    private func stopAudio() {
+        speech.cancel()
+        speaker.stop()
+        effects.stop()
+    }
 }
 
 private struct ParrotSpeechTail: Shape {

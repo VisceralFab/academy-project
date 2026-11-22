@@ -26,9 +26,11 @@ struct ReadLabWelcomeView: View {
                         }
                     }
                     .scrollIndicators(.hidden)
+                    ReadLabPrivacyCaption().padding(.top, 8)
                 }
                 .padding(.horizontal, wide ? 80 : 28)
                 .padding(.top, 14)
+                .padding(.bottom, 8)
             }
         }
     }

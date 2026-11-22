@@ -10,7 +10,8 @@ struct ReadLabFocusView: View {
     var body: some View {
         GeometryReader { geometry in
             let wide = geometry.size.width >= 1100 && !typeSize.isAccessibilitySize
-            let contentWidth: CGFloat = wide ? 868 : min(geometry.size.width - 48, 868)
+            let contentWidth = min(geometry.size.width - 48, 868)
+            let compactHeight = geometry.size.height < 860
             ZStack {
                 ReadLabPastelBackground()
                 VStack(spacing: 0) {
@@ -21,26 +22,26 @@ struct ReadLabFocusView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(wide ? "Choose a reading path\nfor your child." : "Choose a reading path for your child.")
-                                .readLabFont(wide ? 70 : 48, weight: .medium)
+                                .readLabFont(wide ? (compactHeight ? 52 : 64) : 48, weight: .medium)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityAddTraits(.isHeader)
-                            Text("Let’s focus on a specific path, you can select another path whenever you want in your account section.")
-                                .readLabFont(25, weight: .light, rounded: false)
+                            Text("You can choose another reading path anytime in Account.")
+                                .readLabFont(23, weight: .light, rounded: false)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .padding(.top, 24)
+                                .padding(.top, 16)
                             if wide {
                                 HStack(alignment: .top, spacing: 16) {
-                                    ForEach(ReadingPath.allCases) { path in focusCard(path, wide: true) }
-                                }.padding(.top, 60)
+                                    ForEach(ReadingPath.allCases) { path in focusCard(path, compact: compactHeight) }
+                                }.padding(.top, compactHeight ? 20 : 30)
                             } else {
                                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 20)], alignment: .center, spacing: 24) {
-                                    ForEach(ReadingPath.allCases) { path in focusCard(path, wide: false) }
+                                    ForEach(ReadingPath.allCases) { path in focusCard(path, compact: false) }
                                 }.padding(.top, 36)
                             }
                         }
                         .frame(width: contentWidth, alignment: .leading)
-                        .padding(.top, wide ? 60 : 30)
-                        .padding(.bottom, 24)
+                        .padding(.top, compactHeight ? 16 : 32)
+                        .padding(.bottom, 16)
                     }
                     .scrollIndicators(.hidden)
                     HStack {
@@ -48,45 +49,42 @@ struct ReadLabFocusView: View {
                         ReadLabActionButton(title: "Continue", action: onContinue)
                     }
                     .padding(.horizontal, wide ? 67 : 24)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 10)
+                    ReadLabPrivacyCaption().padding(.bottom, 8)
                 }
             }.foregroundStyle(ReadLabStyle.ink)
         }
     }
 
-    private func focusCard(_ path: ReadingPath, wide: Bool) -> some View {
-        VStack(spacing: -24) {
-            Button { audio?.playAnimal(for: path, mascot: true) } label: {
-                Image(path.mascot).resizable().scaledToFit()
-                    .frame(width: path == .words ? 92 : 140, height: 114)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(ReadLabTapStyle())
-            .accessibilityLabel("Play \(path.mascot.lowercased()) sound")
-            .accessibilityIdentifier("mascot-\(path.rawValue)")
-            .zIndex(1)
+    private func focusCard(_ path: ReadingPath, compact: Bool) -> some View {
+        let mascotHeight: CGFloat = compact ? 82 : 98
+        return ZStack(alignment: .top) {
+            Image(path.mascot).resizable().scaledToFit()
+                .frame(width: 140, height: mascotHeight)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+
             Button {
                 selected = path
-                audio?.playAnimal(for: path, mascot: false)
+                audio?.playAnimal(for: path)
             } label: {
-                VStack(spacing: 0) {
+                VStack(spacing: compact ? 8 : 14) {
                     Text(cardTitle(path))
-                        .readLabFont(26, weight: .semibold)
+                        .readLabFont(25, weight: .semibold)
                         .multilineTextAlignment(.center)
-                        .frame(minHeight: 62)
+                        .frame(minHeight: 60)
                     Text(cardDetail(path))
                         .readLabFont(15, weight: .light, rounded: false)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(minHeight: 72)
-                        .padding(.top, 24)
                     ReadLabPathIllustration(path: path)
-                        .frame(height: 110)
-                        .padding(.top, 16)
+                        .scaleEffect(compact ? 0.68 : 0.79)
+                        .frame(height: compact ? 66 : 82)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 24)
-                .frame(maxWidth: .infinity, minHeight: 332)
+                .padding(.horizontal, 18)
+                .padding(.vertical, compact ? 14 : 18)
+                .frame(maxWidth: .infinity)
                 .readLabCard()
                 .overlay { RoundedRectangle(cornerRadius: 28).strokeBorder(selected == path ? ReadLabStyle.blue : .clear, lineWidth: 4) }
             }
@@ -94,8 +92,8 @@ struct ReadLabFocusView: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(selected == path ? .isSelected : [])
             .accessibilityIdentifier("readingPath-\(path.rawValue)")
+            .padding(.top, mascotHeight * 0.78)
         }
-        .frame(width: wide ? 278 : nil)
         .foregroundStyle(ReadLabStyle.ink)
     }
 
@@ -106,7 +104,7 @@ struct ReadLabFocusView: View {
         switch path {
         case .hearing: "Explore letters, sounds,\nsyllables, and rhymes\nthrough playful activities"
         case .words: "Learn to combine syllables,\nrecognize familiar words\nand gradually read\nsimple sentences"
-        case .stories: "Build reading skill\nthrough engaging stories\nand developing reading\ncomprehension"
+        case .stories: "Build reading skills and\ncomprehension through\nengaging stories."
         }
     }
 }

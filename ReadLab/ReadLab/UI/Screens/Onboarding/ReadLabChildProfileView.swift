@@ -24,7 +24,7 @@ struct ReadLabChildProfileView: View {
                         .accessibilityLabel("Child name")
                 }
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Age range · optional").readLabFont(17, weight: .semibold)
+                    Text("Age range · required").readLabFont(17, weight: .semibold)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 14)], spacing: 14) {
                         ForEach(ReadLabAgeRange.allCases) { age in
                             Button { profile.ageRange = age; nameFocused = false } label: {

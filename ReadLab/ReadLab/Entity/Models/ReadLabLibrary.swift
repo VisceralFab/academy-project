@@ -73,38 +73,39 @@ enum ReadLabLibrary {
         if theme == "space" || theme == "nature" {
             let space = [
                 ["sun", "moon", "star", "sky", "light", "night"],
-                ["planet", "rocket", "comet", "orbit", "solar", "starlight"],
-                ["a bright star", "the full moon", "a red planet", "the small rocket", "a long orbit", "the night sky"],
-                ["The rocket flies high.", "The moon shines at night.", "A comet crosses the sky.", "We can see the stars.", "The sun gives us light.", "Our planet is blue."],
-                ["The little rocket travels past the moon.", "A bright comet leaves a trail of light.", "Our blue planet moves around the sun.", "The stars sparkle above the quiet world.", "The astronaut waves from the small window.", "We imagine a journey beyond the stars."]
+                ["planet", "rocket", "comet", "orbit", "crater", "eclipse"],
+                ["galaxy", "gravity", "asteroid", "satellite", "telescope", "meteorite"],
+                ["universe", "atmosphere", "constellation", "supernova", "astronaut", "astronomy"],
+                ["astrophysics", "extraterrestrial", "interstellar", "gravitational", "spectroscopy", "cosmology"]
             ]
             let nature = [
                 ["tree", "rain", "leaf", "seed", "bird", "pond"],
-                ["flower", "river", "forest", "garden", "sunshine", "rainbow"],
-                ["a green leaf", "the tall tree", "a small seed", "the blue bird", "a red flower", "the soft rain"],
-                ["The rain helps trees grow.", "A bird sits on a branch.", "The seed needs some water.", "A river runs through the wood.", "The leaves dance in the wind.", "A flower opens in the sun."],
-                ["The little seed grows into a beautiful tree.", "A gentle shower waters the thirsty garden.", "The river carries leaves towards the sea.", "We watch a tiny bird building its nest.", "The flowers turn their faces towards the sunshine.", "After the rain a rainbow fills the sky."]
+                ["flower", "river", "forest", "garden", "insect", "meadow"],
+                ["rainbow", "sunshine", "waterfall", "butterfly", "mushroom", "tadpole"],
+                ["ecosystem", "pollination", "amphibian", "camouflage", "hibernation", "predator"],
+                ["photosynthesis", "metamorphosis", "biodiversity", "symbiosis", "microorganism", "decomposition"]
             ]
             return (theme == "space" ? space : nature)[tier].map { ReadingPrompt($0, $0) }
         }
         let animals: [[ReadingPrompt]] = [
             [.init("rabbit", "rab·bit"), .init("tiger", "ti·ger"), .init("zebra", "ze·bra"), .init("panda", "pan·da"), .init("otter", "ot·ter"), .init("parrot", "par·rot")],
-            [.init("elephant", "el·e·phant"), .init("butterfly", "but·ter·fly"), .init("kangaroo", "kan·ga·roo"), .init("octopus", "oc·to·pus"), .init("pelican", "pel·i·can"), .init("ladybird", "la·dy·bird")],
-            [.init("alligator", "al·li·ga·tor"), .init("a red rabbit", "a red rab·bit"), .init("a big tiger", "a big ti·ger"), .init("a small zebra", "a small ze·bra"), .init("a shy panda", "a shy pan·da"), .init("a wet otter", "a wet ot·ter")],
-            [.init("hippopotamus", "hip·po·pot·a·mus"), .init("a small elephant", "a small el·e·phant"), .init("the bright butterfly", "the bright but·ter·fly"), .init("a small kangaroo", "a small kan·ga·roo"), .init("a shy octopus", "a shy oc·to·pus"), .init("the white pelican", "the white pel·i·can")],
-            [.init("a very small rabbit", "a ver·y small rab·bit"), .init("a very big tiger", "a ver·y big ti·ger"), .init("a little red parrot", "a lit·tle red par·rot"), .init("a very shy panda", "a ver·y shy pan·da"), .init("the little young zebra", "the lit·tle young ze·bra"), .init("a very wet otter", "a ver·y wet ot·ter")]
+            [.init("elephant", "el·e·phant"), .init("butterfly", "but·ter·fly"), .init("kangaroo", "kan·ga·roo"), .init("octopus", "oc·to·pus"), .init("pelican", "pel·i·can"), .init("jellyfish", "jel·ly·fish")],
+            [.init("alligator", "al·li·ga·tor"), .init("armadillo", "ar·ma·dil·lo"), .init("chameleon", "cha·me·le·on"), .init("rhinoceros", "rhi·noc·er·os"), .init("caterpillar", "cat·er·pil·lar"), .init("anaconda", "an·a·con·da")],
+            [.init("hippopotamus", "hip·po·pot·a·mus"), .init("salamander", "sal·a·man·der"), .init("orangutan", "o·rang·u·tan"), .init("barracuda", "bar·ra·cu·da"), .init("velociraptor", "ve·loc·i·rap·tor"), .init("stegosaurus", "steg·o·sau·rus")],
+            [.init("tyrannosaurus", "ty·ran·no·sau·rus"), .init("triceratops", "tri·cer·a·tops"), .init("invertebrate", "in·ver·te·brate"), .init("cephalopod", "ceph·a·lo·pod"), .init("crustacean", "crus·ta·cean"), .init("arachnid", "a·rach·nid")]
         ]
         let jobs: [[ReadingPrompt]] = [
             [.init("baker", "ba·ker"), .init("doctor", "doc·tor"), .init("teacher", "teach·er"), .init("farmer", "farm·er"), .init("painter", "paint·er"), .init("singer", "sing·er")],
-            [.init("firefighter", "fire·fight·er"), .init("astronaut", "as·tro·naut"), .init("a baker", "a ba·ker"), .init("a teacher", "a teach·er"), .init("the farmer", "the farm·er"), .init("a painter", "a paint·er")],
-            [.init("photographer", "pho·tog·ra·pher"), .init("a kind doctor", "a kind doc·tor"), .init("the firefighter", "the fire·fight·er"), .init("the astronaut", "the as·tro·naut"), .init("a great teacher", "a great teach·er"), .init("a young singer", "a young sing·er")],
-            [.init("the happy painter", "the hap·py paint·er"), .init("a friendly teacher", "a friend·ly teach·er"), .init("a busy farmer", "a bus·y farm·er"), .init("a helpful doctor", "a help·ful doc·tor"), .init("a careful baker", "a care·ful ba·ker"), .init("a famous singer", "a fa·mous sing·er")],
-            [.init("a helpful firefighter", "a help·ful fire·fight·er"), .init("a happy astronaut", "a hap·py as·tro·naut"), .init("the very kind teacher", "the ver·y kind teach·er"), .init("a very good farmer", "a ver·y good farm·er"), .init("a very skilled baker", "a ver·y skilled ba·ker"), .init("a very good singer", "a ver·y good sing·er")]
+            [.init("pilot", "pi·lot"), .init("artist", "art·ist"), .init("dancer", "dan·cer"), .init("driver", "driv·er"), .init("writer", "writ·er"), .init("dentist", "den·tist")],
+            [.init("mechanic", "me·chan·ic"), .init("scientist", "sci·en·tist"), .init("musician", "mu·si·cian"), .init("gardener", "gar·den·er"), .init("astronaut", "as·tro·naut"), .init("firefighter", "fire·fight·er")],
+            [.init("photographer", "pho·tog·ra·pher"), .init("electrician", "e·lec·tri·cian"), .init("librarian", "li·brar·i·an"), .init("animator", "an·i·ma·tor"), .init("biologist", "bi·ol·o·gist"), .init("geologist", "ge·ol·o·gist")],
+            [.init("paleontologist", "pa·le·on·tol·o·gist"), .init("meteorologist", "me·te·or·ol·o·gist"), .init("oceanographer", "o·cean·og·ra·pher"), .init("archaeologist", "ar·chae·ol·o·gist"), .init("pediatrician", "pe·di·a·tri·cian"), .init("astrophysicist", "as·tro·phys·i·cist")]
         ]
         return (theme == "jobs" ? jobs : animals)[tier]
     }
 
-    static func story(theme: String, level: Int) -> ReadingStory {
+    static func story(theme: String, level: Int, age: ReadLabAgeRange? = nil) -> ReadingStory {
+        if let age, let edition = ReadLabAgeStoryContent.story(for: ReadingTheme.find(theme), age: age) { return edition }
         if let illustrated = ReadLabIllustratedStories.story(theme: theme, level: level) { return illustrated }
         let tier = min(5, max(1, level))
         if theme == "tori" { return foxStory(level: tier) }

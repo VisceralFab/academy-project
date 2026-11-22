@@ -50,7 +50,7 @@ struct ReadLabSummaryView: View {
                         Spacer()
                         ReadLabActionButton(title: "Let’s Begin", action: onDone)
                     }
-                    .padding(.vertical, 10)
+                    ReadLabPrivacyCaption()
                 }
                 .padding(.horizontal, compact ? 24 : 64)
                 .padding(.top, 14)

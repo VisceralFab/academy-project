@@ -24,7 +24,9 @@ enum ReadLabIllustratedStories {
         for detail in book.extraDetails.prefix(max(0, level - 2)) {
             captions[detail.page] += " " + detail.text
         }
-        let questionCount = level < 3 ? 3 : (level == 3 ? 4 : 6)
+        // Two comprehension questions per narrative block (pages 1–3, 4–6, 7–9).
+        // The current UI shows them together at the end of the story.
+        let questionCount = 6
         return ReadingStory(title: entry.title, sections: [captions], questions: Array(book.questions.prefix(questionCount)))
     }
 
@@ -35,115 +37,115 @@ enum ReadLabIllustratedStories {
 
     private static let monkey = (
         captions: [
-            "Monkey walks along a jungle path.",
-            "He finds a tree full of yellow bananas.",
-            "He picks one and eats it.",
-            "Just then, Monkey hears a loud rustle behind the tree.",
-            "A little elephant appears, looking worried.",
-            "Elephant’s favorite ball is stuck high among the branches.",
-            "Monkey carefully climbs the tree and reaches for the ball.",
-            "He passes it to Elephant, who catches it with his trunk.",
-            "The two new friends spend the afternoon playing beneath the tree."
+            "Monkey follows a quiet path through the jungle.",
+            "He spots a tree covered in bright yellow bananas.",
+            "Hungry from walking, he picks a banana and eats it.",
+            "As he finishes eating, Monkey hears a sudden rustle behind the tree.",
+            "A little elephant steps out. He keeps looking up at the branches.",
+            "A ball is caught high above his head. Monkey begins to understand why Elephant looks worried.",
+            "Monkey sees a way to help. He carefully climbs the tree towards the ball.",
+            "Balancing on a branch, he gently drops the ball. Elephant catches it safely with his trunk.",
+            "Once the ball is safe, Elephant invites Monkey to play. Their unexpected meeting becomes a new friendship."
         ],
         shortCaptions: [
-            "Monkey walks along a jungle path.",
-            "He finds a banana tree.",
-            "He eats a banana.",
-            "Monkey hears a noise.",
-            "A worried elephant appears.",
-            "His ball is stuck in the tree.",
-            "Monkey climbs up to get it.",
-            "Elephant catches it with his trunk.",
-            "The new friends play with the ball."
+            "Monkey walks through the jungle.",
+            "He sees a tree full of bananas.",
+            "He picks a banana and eats it.",
+            "Monkey hears a noise behind the tree.",
+            "A little elephant appears.",
+            "Elephant’s ball is stuck in the branches.",
+            "Monkey climbs the tree to help.",
+            "Elephant catches the ball with his trunk.",
+            "The new friends play together."
         ],
         extraDetails: [
-            (page: 1, text: "The ripe fruit hangs from the branches."),
-            (page: 3, text: "He stops to see who is there."),
-            (page: 7, text: "Elephant lifts the ball into the air.")
+            (page: 4, text: "Elephant has been trying to reach something above him."),
+            (page: 5, text: "He cannot reach the ball, even when he stretches his trunk."),
+            (page: 7, text: "Monkey waits until Elephant is ready before letting go.")
         ],
         questions: [
-            q("Where does the story take place?", ["Forest", "Jungle", "Park"], 1, "Look at the first page."),
-            q("What fruit did Monkey eat?", ["Apple", "Melon", "Banana"], 2, "The fruit was yellow."),
-            q("Which animal did Monkey meet?", ["Elephant", "Monkey", "Iguana"], 0, "His new friend has a trunk."),
-            q("How was Elephant feeling?", ["Worried", "Happy", "Angry"], 0, "His ball was stuck."),
-            q("What did Elephant use to catch the ball?", ["Leg", "Head", "Trunk"], 2, "Think about Elephant’s long nose."),
-            q("What did they play with?", ["A ball", "Leaves", "Roots"], 0, "Monkey got it out of the tree.")
+            q("Why does Monkey stop by the tree?", ["He sees ripe bananas.", "He is looking for a map.", "He hears someone calling."], 0, "Think about what Monkey finds before he eats."),
+            q("What does Monkey do before eating?", ["He meets Elephant.", "He picks a banana.", "He climbs down a tree."], 1, "What happens on the page just before Monkey eats?"),
+            q("Why does Elephant keep looking up?", ["He sees a bird flying.", "He wants to pick fruit.", "His ball is stuck above him."], 2, "Think about what Monkey sees in the branches."),
+            q("What could Monkey do to help Elephant?", ["Find a safe way to reach the ball.", "Leave Elephant alone under the tree.", "Hide the ball behind the bananas."], 0, "What problem needs to be solved before they can play?"),
+            q("How do Monkey and Elephant work together?", ["Elephant climbs while Monkey waits.", "Monkey reaches the ball and Elephant catches it.", "They both pull the tree down."], 1, "Remember what each friend does in the last three pages."),
+            q("What has changed for Monkey by the end?", ["He has lost his way.", "He has found a new friend.", "He has run out of bananas."], 1, "Compare Monkey on the first page and on the last page.")
         ]
     )
 
     private static let journey = (
         captions: [
-            "Monkey packs his red bag and heads west.",
-            "A wide river blocks his way.",
-            "A friendly elephant helps him cross in a boat.",
-            "On the other bank, the path divides in two.",
-            "The west trail ends at a fallen tree.",
-            "Monkey has an idea that could change his life.",
-            "He takes out his treasure map.",
-            "Monkey starts to dig with his shovel.",
-            "Monkey finds his ancestors’ treasure!"
+            "Monkey packs his red bag and sets off towards the west.",
+            "Soon, a wide river cuts across the path. The water is too deep to walk through.",
+            "A friendly Elephant offers to help. Together, they cross the river in a small boat.",
+            "On the opposite bank, Monkey finds a fork in the path. He must choose which trail to follow.",
+            "He follows the trail towards the west, then pauses beside a tall tree. He is unsure where to search next.",
+            "Monkey remembers something in his red bag. Perhaps it can help him decide what to do.",
+            "He unfolds an old treasure map. A small mark points to a spot beside a tree just like this one.",
+            "Monkey kneels near the tree and begins to dig. Suddenly, his shovel strikes something hard beneath the soil.",
+            "He uncovers a chest of old family treasure. The mark on the map led him to the right place."
         ],
         shortCaptions: [
-            "Monkey packs his red bag and heads west.",
-            "He finds a wide river.",
-            "Elephant helps him cross in a boat.",
+            "Monkey packs his red bag.",
+            "A wide river blocks his path.",
+            "Elephant takes him across in a boat.",
             "The path splits in two.",
-            "A fallen tree blocks the trail.",
-            "Monkey has an idea.",
-            "He takes out his treasure map.",
-            "Monkey digs with his shovel.",
-            "He finds his ancestors’ treasure!"
+            "Monkey stops beside a tall tree.",
+            "He opens his red bag.",
+            "He takes out a treasure map.",
+            "He digs near the tree.",
+            "He finds a treasure chest."
         ],
         extraDetails: [
-            (page: 1, text: "The water is too deep to walk across."),
-            (page: 5, text: "What if the fallen tree is a clue?"),
-            (page: 7, text: "His shovel strikes the lid of a chest.")
+            (page: 3, text: "There are no footsteps to tell him which path is right."),
+            (page: 5, text: "Instead of guessing, Monkey decides to look for a clue."),
+            (page: 7, text: "He checks the mark on the map once more before digging deeper.")
         ],
         questions: [
-            q("Which way is Monkey going?", ["West", "East", "North"], 0, "Read the first page again."),
-            q("What did Elephant use to help Monkey cross?", ["A car", "A boat", "A train"], 1, "What floats on a river?"),
-            q("How many paths were there?", ["Two", "One", "Three"], 0, "The path split on the other bank."),
-            q("What was at the end of the trail?", ["A fallen tree", "A tall tree", "A little tree"], 0, "Something was blocking the trail."),
-            q("Who did the treasure belong to?", ["His parents", "His siblings", "His ancestors"], 2, "Read the last page again."),
-            q("How did Monkey find the treasure?", ["With a map", "With his imagination", "By luck"], 0, "What did he take out before digging?")
+            q("Why must Monkey stop at the river?", ["He wants to pick fruit.", "The water is too deep to cross on foot.", "He has forgotten his bag."], 1, "Think about what is blocking his journey."),
+            q("How is Monkey able to continue his trip?", ["He crosses in Elephant’s boat.", "He jumps over the river.", "He follows the river back home."], 0, "Who helps Monkey on the third page?"),
+            q("Why does Monkey have to make a choice?", ["His bag is empty.", "He is tired of walking.", "The path splits into two trails."], 2, "What does Monkey find after crossing the river?"),
+            q("Why does Monkey open his bag?", ["He wants to share food.", "He remembers something that could guide him.", "He wants to put the tree inside."], 1, "Look at what Monkey takes out on the next page."),
+            q("What makes Monkey dig beside the tree?", ["He notices a mark on the treasure map.", "Elephant tells him to dig anywhere.", "He loses his shovel in the grass."], 0, "Connect what Monkey sees on the map with the place where he stops."),
+            q("What helped Monkey find the treasure?", ["He took the fastest trail without stopping.", "He matched a clue on the map to a place on the path.", "He waited for the treasure to appear."], 1, "Think about why looking carefully at the map mattered.")
         ]
     )
 
     private static let bird = (
         captions: [
-            "Monkey hears a little bird.",
-            "He finds its nest in a tree.",
-            "The bird is keeping his egg warm.",
-            "Some twigs are falling out of the bird’s nest.",
-            "The nest starts to tilt to the left.",
-            "Monkey notices that the little home is no longer strong enough.",
-            "Monkey gathers twigs to help the poor little bird.",
-            "Together they repair the nest.",
-            "With the nest safe again, the bird’s family sings happily."
+            "Monkey hears a soft chirping sound while walking near the trees.",
+            "He follows the sound and discovers a little bird sitting in a nest.",
+            "The bird is keeping a single egg warm. It stays close to protect the egg.",
+            "Suddenly, a few twigs slip from the edge of the nest and fall to the ground.",
+            "Without those twigs, one side of the nest begins to lean. The egg moves closer to the edge.",
+            "Monkey looks up and realizes that the egg could fall if the nest gets any weaker.",
+            "He gathers sturdy twigs from the ground, choosing pieces that can support the nest.",
+            "Monkey carefully reaches up and passes the twigs to the bird. Together, they strengthen the loose side.",
+            "The nest is steady again, and the egg rests safely inside. The bird chirps as Monkey swings away with a smile."
         ],
         shortCaptions: [
-            "Monkey hears a little bird.",
-            "He finds a nest in a tree.",
-            "The bird keeps his egg warm.",
-            "Twigs fall out of the nest.",
-            "The nest tilts to the left.",
-            "The nest is not safe.",
-            "Monkey gets some twigs.",
-            "They fix the nest together.",
-            "The bird’s family sings happily."
+            "Monkey hears a bird chirp.",
+            "He sees a nest in a tree.",
+            "A bird keeps an egg warm.",
+            "Small twigs fall from the nest.",
+            "The nest starts to lean.",
+            "Monkey sees that the egg is not safe.",
+            "Monkey collects strong twigs.",
+            "Monkey and Bird fix the nest.",
+            "The bird chirps. The egg is safe."
         ],
         extraDetails: [
-            (page: 2, text: "He stays close to protect it."),
-            (page: 6, text: "He picks the strongest ones he can find."),
-            (page: 7, text: "They weave the twigs into the nest.")
+            (page: 2, text: "Even when Monkey comes closer, the bird does not leave its egg."),
+            (page: 4, text: "Each missing twig makes the weak side a little less stable."),
+            (page: 7, text: "They place the strongest twigs under the loose edge so it cannot slip.")
         ],
         questions: [
-            q("What was the bird doing?", ["Singing", "Keeping an egg warm", "Flying"], 1, "Look inside the nest."),
-            q("How did Monkey notice the bird?", ["He heard it", "He saw it", "He played with it"], 0, "Read the first page again."),
-            q("What was falling out of the nest?", ["Leaves", "Roots", "Twigs"], 2, "What did Monkey gather to repair it?"),
-            q("What did they do at the end?", ["Danced", "Sang", "Talked"], 1, "Read the last page again."),
-            q("Which way did the nest tilt?", ["To the right", "To the left", "Straight down"], 1, "Look at the nest before Monkey helps."),
-            q("Did Monkey help the bird?", ["Yes", "No"], 0, "Think about what they did together.")
+            q("Why does Monkey look up at the tree?", ["He follows the sound of a bird.", "He sees a treasure chest.", "He wants to pick a banana."], 0, "What does Monkey hear before he finds the nest?"),
+            q("Why does the bird stay close to its egg?", ["It wants to hide a map.", "It is keeping the egg warm and safe.", "It is waiting for Monkey to climb."], 1, "Think about what the bird does on the third page."),
+            q("Why does the nest begin to lean?", ["The tree is moving away.", "The egg is getting bigger.", "Some of the twigs fall out."], 2, "What changes in the nest just before it leans?"),
+            q("What might happen if the nest is not repaired?", ["The egg could fall.", "The tree would grow taller.", "The bird would find a ball."], 0, "Think about what is near the edge of the weak nest."),
+            q("Why does Monkey choose strong twigs?", ["They can help support the nest.", "They are the prettiest colour.", "They make a louder sound."], 0, "What needs to become strong again?"),
+            q("What makes the ending safe for the bird?", ["Monkey carries the egg away.", "Monkey and Bird repair the nest together.", "The bird leaves the nest behind."], 1, "Remember what the friends do before Monkey leaves.")
         ]
     )
 

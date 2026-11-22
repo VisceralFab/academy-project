@@ -5,21 +5,20 @@ import SwiftUI
 enum ReadLabAudioScene: Equatable { case onboarding, home, practice }
 
 enum ReadLabSound: String, CaseIterable {
-    case onboarding = "Onboard music", home = "Home music"
-    case elephantCard = "Elephant 1", elephantMascot = "Elephant 2"
-    case parrotCard = "Parrot 1", parrotMascot = "Parrot 2"
-    case monkeyCard = "Monkey 1", monkeyMascot = "Monkey 2"
+    case onboarding = "Onboard music", home = "Background home music"
+    case elephantMascot = "Elephant 2"
+    case parrotMascot = "Parrot 2"
+    case monkeyMascot = "Monkey 2"
+    case correct = "Correct sound"
 
     /// Edit these percentages (0–100) to set the playback volume of each file.
     private var volumePercent: Float {
         switch self {
         case .onboarding: 20
         case .home: 20
-        case .elephantCard: 80
+        case .correct: 45
         case .elephantMascot: 80
-        case .parrotCard: 80
         case .parrotMascot: 80
-        case .monkeyCard: 15 // Monkey 1
         case .monkeyMascot: 80
         }
     }
@@ -31,11 +30,11 @@ enum ReadLabSound: String, CaseIterable {
             ?? Bundle.main.url(forResource: rawValue, withExtension: "mp3", subdirectory: "Sounds")
     }
 
-    static func animal(for path: ReadingPath, mascot: Bool) -> Self {
+    static func animal(for path: ReadingPath) -> Self {
         switch path {
-        case .hearing: mascot ? .elephantMascot : .elephantCard
-        case .words: mascot ? .parrotMascot : .parrotCard
-        case .stories: mascot ? .monkeyMascot : .monkeyCard
+        case .hearing: .elephantMascot
+        case .words: .parrotMascot
+        case .stories: .monkeyMascot
         }
     }
 }
@@ -85,9 +84,9 @@ final class ReadLabAudioController {
         refreshMusic()
     }
 
-    func playAnimal(for path: ReadingPath, mascot: Bool) {
+    func playAnimal(for path: ReadingPath) {
         guard effectsEnabled, isActive, !interrupted, scene != .practice, !previews else { return }
-        let sound = ReadLabSound.animal(for: path, mascot: mascot)
+        let sound = ReadLabSound.animal(for: path)
         guard let url = sound.url else { return }
         effectPlayer?.stop()
         do {

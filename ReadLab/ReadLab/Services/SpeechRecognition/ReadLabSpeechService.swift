@@ -229,6 +229,8 @@ final class ReadLabSpeaker: NSObject, AVSpeechSynthesizerDelegate {
     private(set) var isSpeaking = false
     @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
     @ObservationIgnored private var utteranceID: ObjectIdentifier?
+    @ObservationIgnored private var parrot: ReadLabParrotPlayer?
+    @ObservationIgnored private var playbackGeneration = UUID()
     @ObservationIgnored private var playbackEnded: CheckedContinuation<Bool, Never>?
 
     override init() {
@@ -236,7 +238,22 @@ final class ReadLabSpeaker: NSObject, AVSpeechSynthesizerDelegate {
         synthesizer.delegate = self
     }
 
-    func speak(_ text: String, pitch: Float = 1) async -> Bool {
+    func speakParrot(_ text: String) async -> Bool {
+        guard let word = text.split(whereSeparator: \.isWhitespace).first else { return false }
+        stop()
+        let generation = playbackGeneration
+        let player = parrot ?? ReadLabParrotPlayer()
+        parrot = player
+        switch await player.play(String(word)) {
+        case .played: return true
+        case .cancelled: return false
+        case .unavailable:
+            guard generation == playbackGeneration, !Task.isCancelled else { return false }
+            return await speak(String(word), pitch: 1.45, rate: 0.46, volume: 0.70)
+        }
+    }
+
+    func speak(_ text: String, pitch: Float = 1, rate: Float = 0.38, volume: Float = 1) async -> Bool {
         stop()
         guard !Task.isCancelled else { return false }
         do {
@@ -248,8 +265,9 @@ final class ReadLabSpeaker: NSObject, AVSpeechSynthesizerDelegate {
         }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-        utterance.rate = 0.38
+        utterance.rate = rate
         utterance.pitchMultiplier = pitch
+        utterance.volume = volume
         utteranceID = ObjectIdentifier(utterance)
         isSpeaking = true
         return await withCheckedContinuation { continuation in
@@ -259,6 +277,8 @@ final class ReadLabSpeaker: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     func stop() {
+        playbackGeneration = UUID()
+        parrot?.stop()
         guard let id = utteranceID else { return }
         synthesizer.stopSpeaking(at: .immediate)
         finish(id, completed: false)

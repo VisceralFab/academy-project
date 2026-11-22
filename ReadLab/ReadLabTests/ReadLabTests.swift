@@ -7,12 +7,14 @@ import SwiftUI
 
 @MainActor
 struct ReadLabTests {
-    @Test func childProfileOnlyRequiresAName() {
+    @Test func childProfileRequiresNameAndAge() {
         var profile = ReadLabChildProfile()
         #expect(!profile.isValid)
         profile.childName = "   "
         #expect(!profile.isValid)
         profile.childName = "Luca"
+        #expect(!profile.isValid)
+        profile.ageRange = .sixSeven
         #expect(profile.isValid)
         #expect(profile.readingFamiliarity == nil)
     }
@@ -159,7 +161,7 @@ struct ReadLabTests {
                 #expect(prompts.count == 6)
                 for prompt in prompts {
                     let pieces = prompt.syllables.flatMap { $0.components(separatedBy: .whitespaces) }.filter { !$0.isEmpty }
-                    #expect(pieces.count == level + 1, "\(theme.id), level \(level): \(prompt.text)")
+                    #expect((2...6).contains(pieces.count), "\(theme.id), level \(level): \(prompt.text)")
                     #expect(SpeechMatch.normalized(pieces.joined()) == SpeechMatch.normalized(prompt.text.replacingOccurrences(of: " ", with: "")))
                 }
             }
@@ -179,6 +181,56 @@ struct ReadLabTests {
                 previousWordCount = words
             }
         }
+    }
+
+    @Test func illustratedStoryEditionsMatchAgeAndKeepNinePages() throws {
+        let profiles: [(ReadLabAgeRange, ClosedRange<Int>, Int)] = [
+            (.fourFive, 3...8, 1), (.sixSeven, 8...18, 2), (.eightNine, 15...30, 2), (.tenPlus, 20...45, 3)
+        ]
+        for theme in ReadingTheme.themes(for: .stories) {
+            var previousWords = 0
+            for (age, bounds, sentenceLimit) in profiles {
+                let story = ReadLabLibrary.story(theme: theme.id, level: 1, age: age)
+                let pages = story.sections.flatMap { $0 }
+                #expect(pages.count == 9)
+                #expect(story.sections.allSatisfy { (1...2).contains($0.count) })
+                #expect(story.questions.count == 6)
+                #expect(story.questions.allSatisfy { $0.options.indices.contains($0.answer) && Set($0.options).count == 3 })
+                for (index, page) in pages.enumerated() {
+                    #expect(bounds.contains(page.split(whereSeparator: \.isWhitespace).count), "\(theme.title), \(age.rawValue), page \(index + 1)")
+                    #expect(page.split(whereSeparator: { ".!?".contains($0) }).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count <= sentenceLimit)
+                    let asset = ReadLabIllustratedStories.artwork(for: theme, page: index + 1)
+                    #expect(UIImage(named: asset) != nil)
+                }
+                let total = pages.flatMap { $0.split(whereSeparator: \.isWhitespace) }.count
+                #expect(total > previousWords)
+                previousWords = total
+                #expect(story == ReadLabLibrary.story(theme: theme.id, level: 5, age: age))
+            }
+        }
+    }
+
+    @Test func illustratedStoryAgeIsFrozenForNewSessionsAndOptionalForOldOnes() throws {
+        let suite = "readlab.age-story.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ReadLabStore(defaults: defaults)
+        let theme = try #require(ReadingTheme.themes(for: .stories).first)
+        #expect(store.start(path: .stories, theme: theme).storyAgeRange == .fourFive)
+        store.data.profile.ageRange = .eightNine
+        var session = store.start(path: .stories, theme: theme)
+        session.storyReading = StoryReadingProgress(paragraphIndex: 1, wordCount: 3)
+        store.update(session)
+        store.data.profile.ageRange = .tenPlus
+
+        let reopened = ReadLabStore(defaults: defaults)
+        #expect(reopened.session(for: .stories)?.storyAgeRange == .eightNine)
+        #expect(reopened.session(for: .stories)?.storyReading?.wordCount == 3)
+        let legacy = PracticeSession(path: .stories, themeID: theme.id, contentLevel: 3)
+        let decoded = try JSONDecoder().decode(PracticeSession.self, from: JSONEncoder().encode(legacy))
+        #expect(decoded.storyAgeRange == nil)
+        #expect(ReadLabLibrary.story(theme: theme.id, level: decoded.contentLevel, age: decoded.storyAgeRange)
+                == ReadLabIllustratedStories.story(theme: theme.id, level: 3))
     }
 
     @Test func storyKeepsEveryRecognizedWordAcrossRevisionsAndPauses() {
@@ -390,19 +442,19 @@ struct ReadLabTests {
         #expect(StoryText.highlighted(original, through: 0).runs.first?.backgroundColor == nil)
     }
 
-    @Test func allEightAudioFilesDecodeAndAnimalMappingIsCorrect() throws {
+    @Test func bundledAudioFilesDecodeAndUseOnlySecondAnimalVariants() throws {
         for sound in ReadLabSound.allCases {
             let url = try #require(sound.url, "Missing bundled audio: \(sound.rawValue)")
             let player = try AVAudioPlayer(contentsOf: url)
             #expect(player.duration > 0)
             #expect(player.numberOfChannels > 0)
         }
-        #expect(ReadLabSound.animal(for: .hearing, mascot: false) == .elephantCard)
-        #expect(ReadLabSound.animal(for: .hearing, mascot: true) == .elephantMascot)
-        #expect(ReadLabSound.animal(for: .words, mascot: false) == .parrotCard)
-        #expect(ReadLabSound.animal(for: .words, mascot: true) == .parrotMascot)
-        #expect(ReadLabSound.animal(for: .stories, mascot: false) == .monkeyCard)
-        #expect(ReadLabSound.animal(for: .stories, mascot: true) == .monkeyMascot)
+        #expect(ReadLabSound.animal(for: .hearing) == .elephantMascot)
+        #expect(ReadLabSound.animal(for: .words) == .parrotMascot)
+        #expect(ReadLabSound.animal(for: .stories) == .monkeyMascot)
+        for obsolete in ["Elephant 1", "Monkey 1", "Parrot 1", "Home music"] {
+            #expect(Bundle.main.url(forResource: obsolete, withExtension: "mp3") == nil)
+        }
     }
 
     @Test func musicFollowsSceneMuteAndInterruptionAndRemembersPreferences() throws {

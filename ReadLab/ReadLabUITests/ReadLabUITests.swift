@@ -10,6 +10,7 @@ final class ReadLabUITests: XCTestCase {
         app.launchArguments = ["--uitesting", "--reset-journey"]
         app.launch()
         XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["onboardingPrivacyCaption"].isHittable)
         capture("01-welcome", app: app)
         app.buttons["Get Started"].tap()
         let name = app.textFields["Child name"]
@@ -17,9 +18,12 @@ final class ReadLabUITests: XCTestCase {
         name.tap()
         name.typeText("Luca\n")
         XCTAssertFalse(app.staticTexts["Reading familiarity · required"].exists)
+        XCTAssertFalse(app.buttons["Continue"].isEnabled)
         let age = app.buttons["ageRange-6–7"]
         age.tap()
         XCTAssertTrue(age.isSelected)
+        XCTAssertTrue(app.buttons["Continue"].isEnabled)
+        XCTAssertTrue(app.staticTexts["onboardingPrivacyCaption"].isHittable)
         capture("01b-profile", app: app)
         app.buttons["Continue"].tap()
         XCTAssertTrue(app.buttons["diagnosis-diagnosed"].waitForExistence(timeout: 5))
@@ -27,6 +31,7 @@ final class ReadLabUITests: XCTestCase {
         app.buttons["diagnosis-diagnosed"].tap()
         XCTAssertTrue(app.switches["dyslexicToggle"].waitForExistence(timeout: 5))
         app.switches["dyslexicToggle"].tap()
+        XCTAssertTrue(app.staticTexts["onboardingPrivacyCaption"].isHittable)
         capture("02-learning-preferences", app: app)
         app.switches["dyslexicToggle"].tap()
         app.buttons["diagnosis-none"].tap()
@@ -34,11 +39,14 @@ final class ReadLabUITests: XCTestCase {
         app.buttons["Continue"].tap()
         let firstWords = app.buttons["readingPath-words"]
         XCTAssertTrue(firstWords.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["onboardingPrivacyCaption"].isHittable)
         capture("03-reading-paths", app: app)
         for path in ["hearing", "words", "stories"] {
-            XCTAssertTrue(app.buttons["mascot-\(path)"].exists)
-            app.buttons["readingPath-\(path)"].tap()
-            app.buttons["mascot-\(path)"].tap()
+            let card = app.buttons["readingPath-\(path)"]
+            XCTAssertTrue(card.isHittable)
+            XCTAssertLessThan(card.frame.maxY, app.buttons["Continue"].frame.minY)
+            card.tap()
+            XCTAssertTrue(card.isSelected)
         }
         firstWords.tap()
         app.buttons["Continue"].tap()
@@ -47,6 +55,7 @@ final class ReadLabUITests: XCTestCase {
         XCTAssertTrue(lastSummary.isHittable)
         XCTAssertLessThan(lastSummary.frame.maxY, app.buttons["Let’s Begin"].frame.minY)
         XCTAssertFalse(app.staticTexts["Reading familiarity"].exists)
+        XCTAssertTrue(app.staticTexts["onboardingPrivacyCaption"].isHittable)
         capture("04-summary", app: app)
         app.buttons["Let’s Begin"].tap()
         XCTAssertTrue(app.buttons["accountButton"].waitForExistence(timeout: 5))
@@ -56,6 +65,7 @@ final class ReadLabUITests: XCTestCase {
         capture("05-first-words-home", app: app)
         app.buttons["startMissionButton"].tap()
         XCTAssertTrue(app.sliders["Syllable focus"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["storyMascotSound"].exists)
         capture("06-first-words-exercise", app: app)
         XCTAssertFalse(app.buttons["Listen"].exists)
         // The syllable lens stays on screen while listening starts automatically.
@@ -85,6 +95,7 @@ final class ReadLabUITests: XCTestCase {
         app.buttons["startMissionButton"].tap()
         XCTAssertTrue(app.buttons["readingPrompt"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["microphoneButton"].exists)
+        XCTAssertFalse(app.buttons["storyMascotSound"].exists)
         capture("08-hearing-exercise", app: app)
         app.buttons["readingPrompt"].tap()
         confirmParagraphWithGrownUp(app: app)
@@ -105,6 +116,8 @@ final class ReadLabUITests: XCTestCase {
         XCTAssertFalse(app.sliders["Reading text size"].exists)
         XCTAssertTrue(app.buttons["storyParagraph0"].exists)
         XCTAssertFalse(app.buttons["storyParagraph1"].exists)
+        XCTAssertTrue(app.buttons["storyMascotSound"].isHittable)
+        app.buttons["storyMascotSound"].tap()
         capture("10-story", app: app)
         confirmParagraphWithGrownUp(app: app)
         XCTAssertTrue(app.staticTexts["Page 2 of 9"].waitForExistence(timeout: 6))
@@ -120,14 +133,18 @@ final class ReadLabUITests: XCTestCase {
         XCTAssertTrue(app.buttons["answerOption1"].waitForExistence(timeout: 6))
         capture("11-story-questions", app: app)
         app.buttons["answerOption1"].tap()
-        app.buttons["Next Question"].tap()
+        tapEnabled("Next Question", app: app)
         app.buttons["closeActivityButton"].tap()
         app.buttons["resumeSessionButton"].tap()
         XCTAssertTrue(app.staticTexts["What fruit did Monkey eat?"].waitForExistence(timeout: 5))
         app.buttons["answerOption2"].tap()
-        app.buttons["Next Question"].tap()
+        tapEnabled("Next Question", app: app)
         app.buttons["answerOption0"].tap()
-        app.buttons["Finish Story"].tap()
+        tapEnabled("Next Question", app: app)
+        for (index, answer) in [1, 0, 2].enumerated() {
+            app.buttons["answerOption\(answer)"].tap()
+            tapEnabled(index == 2 ? "Finish Story" : "Next Question", app: app)
+        }
         XCTAssertTrue(app.buttons["Back to Discoveries"].waitForExistence(timeout: 5))
         app.buttons["Back to Discoveries"].tap()
         XCUIDevice.shared.orientation = .portrait
@@ -171,6 +188,12 @@ final class ReadLabUITests: XCTestCase {
         XCTAssertFalse(app.buttons["microphoneButton"].exists)
         capture("18-large-text-exercise", app: app)
 
+    }
+
+    private func tapEnabled(_ title: String, app: XCUIApplication) {
+        let button = app.buttons[title]
+        XCTAssertTrue(button.wait(for: \.isEnabled, toEqual: true, timeout: 5))
+        button.tap()
     }
 
     private func confirmParagraphWithGrownUp(app: XCUIApplication) {

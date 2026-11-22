@@ -138,7 +138,7 @@ struct ReadLabHomeView: View {
     }
 
     private func mascot(embedded: Bool) -> some View {
-        Button { audio?.playAnimal(for: path, mascot: true) } label: {
+        Button { audio?.playAnimal(for: path) } label: {
             if embedded {
                 Color.clear.contentShape(Rectangle())
             } else {
@@ -183,9 +183,10 @@ struct ReadLabHomeView: View {
     }
 
     private func storyPreview(wide: Bool) -> some View {
-        let story = ReadLabLibrary.story(theme: suggestion.id, level: store.level(for: .stories))
-        return ReadLabMissionArt(name: suggestion.cover)
-            .aspectRatio(1256.0 / 936.0, contentMode: .fit)
+        let inProgress = savedSession.flatMap { $0.themeID == suggestion.id ? $0 : nil }
+        let age: ReadLabAgeRange? = if let inProgress { inProgress.storyAgeRange } else { store.data.profile.ageRange ?? .fourFive }
+        let story = ReadLabLibrary.story(theme: suggestion.id, level: inProgress?.contentLevel ?? store.level(for: .stories), age: age)
+        return ReadLabStoryArtwork(name: suggestion.cover)
             .overlay(alignment: .top) {
                 Text(story.sections[0][0])
                     .readLabFont(wide ? 38 : 24, weight: .medium)

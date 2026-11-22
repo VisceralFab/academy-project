@@ -248,7 +248,8 @@ struct ReadLabStepLayout<Content: View>: View {
                         Spacer()
                         ReadLabActionButton(title: actionTitle, action: onAction, enabled: actionEnabled)
                     }
-                    .padding(.vertical, 10)
+                    .padding(.top, 6)
+                    ReadLabPrivacyCaption()
                 }
                 .padding(.horizontal, compact ? 24 : 64)
                 .padding(.top, 14)
@@ -273,5 +274,20 @@ struct ReadLabPageTitle: View {
             }
         }
         .foregroundStyle(ReadLabStyle.ink)
+    }
+}
+
+
+struct ReadLabPrivacyCaption: View {
+    var body: some View {
+        Text("Your child’s profile and reading progress are saved on this iPad. This app does not upload them.")
+            .readLabFont(14, weight: .medium, rounded: false)
+            .foregroundStyle(ReadLabStyle.ink.opacity(0.86))
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 620)
+            .padding(.horizontal, 48)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("onboardingPrivacyCaption")
     }
 }
