@@ -8,48 +8,39 @@ struct ReadLabHomeView: View {
     @Environment(\.readLabAudio) private var audio
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var path: ReadingPath { store.data.selectedPath }
-    private var themes: [ReadingTheme] { ReadingTheme.themes(for: path) }
+    private var themes: [ReadingTheme] {
+        let list = ReadingTheme.themes(for: path)
+        return path == .words ? Array(list.reversed()) : list
+    }
     private var suggestion: ReadingTheme { themes[suggestionIndex % themes.count] }
     private var savedSession: PracticeSession? { store.session(for: path).flatMap { $0.completed ? nil : $0 } }
+    private var scene: String { path == .hearing ? "HearingLake" : "WordMissionLandscape" }
 
     var body: some View {
         GeometryReader { geometry in
-            let wide = geometry.size.width >= 1100 && !typeSize.isAccessibilitySize
-            let inset: CGFloat = wide ? 67 : 28
-            let available = geometry.size.width - inset - (wide ? 60 : inset)
-            // 1366 × 1024 reference: 655 pt feature, 50 pt gap, 534 pt resume column.
-            let scale = min(1, available / 1239)
+            let size = geometry.size
+            let wide = size.width >= 800 && size.width > size.height && !typeSize.isAccessibilitySize
             ZStack {
-                ReadLabPastelBackground(path: path)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: wide ? 72 : 40) {
-                        header(compact: !wide)
-                        if wide {
-                            HStack(alignment: .bottom, spacing: 50 * scale) {
-                                suggestionCard(width: 655 * scale, height: 600 * scale, imageHeight: 309 * scale)
-                                VStack(spacing: 0) {
-                                    mascot.frame(maxWidth: .infinity).frame(height: 430 * scale)
-                                    Spacer(minLength: 0)
-                                    resumeCard(width: 534 * scale, compact: false)
-                                }
-                                .frame(width: 534 * scale, height: 600 * scale)
-                            }
-                        } else {
-                            suggestionCard(width: available, height: nil, imageHeight: min(340, available * 0.48))
-                            mascot.frame(maxWidth: .infinity).frame(height: 280)
-                            resumeCard(width: available, compact: true)
-                        }
-                    }
-                    .frame(maxWidth: 1239, alignment: .leading)
-                    .padding(.leading, inset)
-                    .padding(.trailing, wide ? 60 : inset)
-                    .padding(.top, wide ? 36 : 28)
-                    .padding(.bottom, 54)
+                if path == .stories {
+                    ReadLabMissionArt(name: "StoryQuizLandscape").ignoresSafeArea()
+                    storyHome(wide: wide, availableHeight: size.height)
+                } else if wide {
+                    ReadLabMissionArt(name: scene).ignoresSafeArea()
+                    voiceHome(size: size)
+                } else {
+                    ReadLabMissionArt(name: "StoryQuizLandscape").ignoresSafeArea()
+                    compactVoiceHome
                 }
-                .scrollIndicators(.hidden)
+            }
+            .overlay(alignment: .topTrailing) {
+                accountButton
+                    .padding(.top, 16)
+                    .padding(.trailing, wide ? 32 : 18)
             }
         }
+        .foregroundStyle(ReadLabStyle.ink)
         .onChange(of: activeSession?.id) { _, id in audio?.setScene(id == nil ? .home : .practice) }
         .onChange(of: path) { _, _ in suggestionIndex = 0 }
         .sheet(isPresented: $settingsPresented) {
@@ -60,184 +51,191 @@ struct ReadLabHomeView: View {
         }
     }
 
-    private func header(compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(path.title)
-                .readLabFont(compact ? 52 : 70, weight: .bold)
-                .padding(.trailing, 84)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(alignment: .topTrailing) { accountButton }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(path.question)
-                .readLabFont(compact ? 52 : 70, weight: .medium)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
-        }
-        .foregroundStyle(ReadLabStyle.ink)
-    }
-
-    /// A filled, high-contrast avatar so the Account entry point stands out on the pastel background.
     private var accountButton: some View {
         Button { settingsPresented = true } label: {
-            Image(systemName: "person.fill")
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
-                .frame(width: 68, height: 68)
-                // Top-lit gradient + inner highlight give the button a raised, tactile look.
-                .background(
-                    LinearGradient(colors: [Color(red: 0.30, green: 0.63, blue: 0.86), ReadLabStyle.actionFill],
-                                   startPoint: .top, endPoint: .bottom),
-                    in: Circle())
-                .overlay {
-                    Circle().strokeBorder(
-                        LinearGradient(colors: [.white.opacity(0.55), .clear], startPoint: .top, endPoint: .center),
-                        lineWidth: 2).padding(4)
-                }
-                .overlay { Circle().strokeBorder(.white, lineWidth: 4) }
-                // Two layered shadows: a tight contact shadow and a soft ambient one.
-                .shadow(color: ReadLabStyle.ink.opacity(0.35), radius: 2, y: 2)
-                .shadow(color: ReadLabStyle.ink.opacity(0.30), radius: 14, y: 9)
+            ReadLabMissionCircle(symbol: "person.crop.circle", size: 52)
         }
         .buttonStyle(ReadLabTapStyle())
         .accessibilityLabel("Account")
-        .accessibilityHint("Profile, settings and performance report")
         .accessibilityIdentifier("accountButton")
     }
 
-    private func suggestionCard(width: CGFloat, height: CGFloat?, imageHeight: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Image(suggestion.cover).resizable().scaledToFill()
-                .frame(width: width, height: imageHeight).clipped()
-                .overlay(alignment: .topLeading) {
-                    Text("Daily suggest").readLabFont(13, weight: .medium)
-                        .padding(.horizontal, 22).padding(.vertical, 8)
-                        .background(ReadLabStyle.sand, in: Capsule()).padding(22)
-                }
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(suggestion.title).readLabFont(35, weight: .bold)
-                Text(suggestion.detail).readLabFont(25, weight: .light, rounded: false)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 22)
-                Spacer(minLength: 32)
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 30) { shuffle; startButton.frame(maxWidth: .infinity) }
-                    VStack(alignment: .leading, spacing: 16) { shuffle; startButton }
-                }
+    private func voiceHome(size: CGSize) -> some View {
+        let panelCenter = size.width * 0.32
+        let panelHeight = size.height * 0.43
+        let panelY = size.height * 0.45
+        let footerY = min(panelY + panelHeight / 2 + 62, size.height - 34)
+        return ZStack {
+            topicCard(fontSize: min(60, size.width * 0.050), buttonSize: 76)
+                .frame(width: size.width * 0.50, height: panelHeight)
+                .modifier(ReadLabPracticeCloud(cornerRadius: 28))
+                .position(x: panelCenter, y: panelY)
+            mascot(embedded: path == .words)
+                .frame(width: size.width * 0.20, height: size.height * 0.33)
+                .position(x: size.width * 0.82, y: path == .words ? size.height * 0.43 : panelY)
+            shuffle
+                .frame(maxWidth: size.width * 0.44)
+                .position(x: panelCenter, y: footerY)
+            if let savedSession {
+                resumeButton(savedSession)
+                    .frame(maxWidth: size.width * 0.28)
+                    .position(x: size.width * 0.82, y: footerY)
             }
-            .padding(.horizontal, 34)
-            .padding(.top, 44)
-            .padding(.bottom, 22)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(width: width, height: height)
-        .foregroundStyle(ReadLabStyle.ink)
-        .background(.white)
-        .clipShape(RoundedRectangle(cornerRadius: 28))
-        .shadow(color: ReadLabStyle.ink.opacity(0.20), radius: 6, y: 5)
-        .id(suggestion.id)
-        .transition(.opacity)
+        .frame(width: size.width, height: size.height)
+    }
+
+    private var compactVoiceHome: some View {
+        ScrollView {
+            VStack(spacing: 28) {
+                ReadLabMissionArt(name: scene)
+                    .aspectRatio(1366.0 / 1024.0, contentMode: .fit)
+                    .clipShape(.rect(cornerRadius: 24))
+                    .overlay(alignment: .trailing) {
+                        mascot(embedded: path == .words).frame(width: 110, height: 150)
+                    }
+                topicCard(fontSize: 38, buttonSize: 74)
+                    .padding(22)
+                    .modifier(ReadLabPracticeCloud(cornerRadius: 24))
+                shuffle
+                if let savedSession { resumeButton(savedSession) }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 68)
+            .padding(.bottom, 28)
+        }
+    }
+
+    private func topicCard(fontSize: CGFloat, buttonSize: CGFloat) -> some View {
+        VStack(spacing: 26) {
+            VStack(spacing: 8) {
+                Text("Suggested topic")
+                    .readLabFont(min(25, fontSize * 0.54), weight: .medium)
+                Text(suggestion.title)
+                    .readLabFont(fontSize, weight: .semibold)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            .multilineTextAlignment(.center)
+            startButton(suggestion, size: buttonSize)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
     }
 
     private var shuffle: some View {
-        Button {
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { suggestionIndex = (suggestionIndex + 1) % themes.count }
-        } label: {
-            Label("Shuffle", systemImage: "shuffle")
-                .readLabFont(24, weight: .bold)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 26)
-                .frame(minHeight: 62)
-                .background(ReadLabStyle.secondaryFill, in: Capsule())
+        Button { selectNext(1) } label: {
+            Label(path == .stories ? "Suggest another story" : "Suggest another topic", systemImage: "shuffle")
+                .readLabFont(21, weight: .semibold)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 12)
+                .frame(minHeight: 48)
+                .background(.white, in: Capsule())
+                .shadow(color: ReadLabStyle.ink.opacity(0.12), radius: 5, y: 2)
         }
         .buttonStyle(ReadLabTapStyle())
-        .accessibilityHint("Choose another collection")
+        .accessibilityIdentifier("suggestAnotherTopicButton")
     }
-    private var startButton: some View {
-        Button { begin(suggestion) } label: {
-            Text(path == .hearing ? "Let’s start hearing" : "Let’s start read")
-                .readLabFont(24, weight: .bold)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 24)
-                .frame(maxWidth: .infinity, minHeight: 62)
-                .background(ReadLabStyle.actionFill, in: Capsule())
-                .shadow(color: ReadLabStyle.actionFill.opacity(0.30), radius: 6, y: 3)
-        }.buttonStyle(ReadLabTapStyle())
-    }
-    private var mascot: some View {
+
+    private func mascot(embedded: Bool) -> some View {
         Button { audio?.playAnimal(for: path, mascot: true) } label: {
-            Image(path.mascot).resizable().scaledToFit()
-                .frame(width: path == .words ? 240 : 360, height: 360)
+            if embedded {
+                Color.clear.contentShape(Rectangle())
+            } else {
+                Image(path.mascot).resizable().scaledToFit()
+            }
         }
-        .buttonStyle(ReadLabTapStyle())
+        .buttonStyle(.plain)
         .accessibilityLabel("Play \(path.mascot.lowercased()) sound")
         .accessibilityIdentifier("mascotButton")
     }
-    private func resumeCard(width: CGFloat, compact: Bool) -> some View {
-        let theme = savedSession.map { ReadingTheme.find($0.themeID) } ?? themes[(suggestionIndex + 1) % themes.count]
-        return Button {
-            if let savedSession { activeSession = savedSession } else { begin(theme) }
-        } label: {
-            HStack(spacing: 32) {
-                Image(theme.cover).resizable().scaledToFill()
-                    .frame(width: compact ? 125 : width * 125 / 534, height: 105).clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(resumeTitle).readLabFont(15, weight: .light, rounded: false)
-                    Text(theme.title).readLabFont(25, weight: .bold)
-                    if let savedSession {
-                        ProgressView(value: sessionProgress(savedSession))
-                            .tint(Color(red: 0.44, green: 0.59, blue: 0.42))
-                            .accessibilityLabel("Session progress")
-                            .padding(.top, 5)
-                    } else {
-                        Label("Explore", systemImage: "arrow.right").readLabFont(15, weight: .medium)
-                    }
+
+    private func storyHome(wide: Bool, availableHeight: CGFloat) -> some View {
+        ScrollView {
+            VStack(spacing: wide ? 20 : 16) {
+                VStack(spacing: 8) {
+                    Text(suggestion.title)
+                        .readLabFont(wide ? 46 : 32, weight: .semibold)
+                        .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
+                    Text("\(suggestionIndex + 1) of \(themes.count)")
+                        .readLabFont(17, weight: .medium)
+                        .accessibilityLabel("Story \(suggestionIndex + 1) of \(themes.count)")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 24)
+                .frame(maxWidth: .infinity)
+
+                storyPreview(wide: wide)
+                    .frame(maxWidth: wide ? max(440, (availableHeight - 260) * 1256 / 936) : .infinity)
+                    .id(suggestion.id)
+                    .transition(.opacity)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 16) { storyHomeActions }
+                    VStack(spacing: 12) { storyHomeActions }
+                }
             }
-            .frame(width: width, alignment: .leading)
-            .foregroundStyle(ReadLabStyle.ink)
-            .multilineTextAlignment(.leading)
-            .readLabCard()
+            .frame(maxWidth: 1120)
+            .padding(.horizontal, wide ? 80 : 16)
+            .padding(.top, wide ? 64 : 72)
+            .padding(.bottom, 28)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func storyPreview(wide: Bool) -> some View {
+        let story = ReadLabLibrary.story(theme: suggestion.id, level: store.level(for: .stories))
+        return ReadLabMissionArt(name: suggestion.cover)
+            .aspectRatio(1256.0 / 936.0, contentMode: .fit)
+            .overlay(alignment: .top) {
+                Text(story.sections[0][0])
+                    .readLabFont(wide ? 38 : 24, weight: .medium)
+                    .multilineTextAlignment(.center)
+                    .padding(16)
+                    .frame(maxWidth: .infinity)
+                    .background(.ultraThinMaterial)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                startButton(suggestion, size: wide ? 86 : 64)
+                    .padding(wide ? 26 : 10)
+            }
+            .modifier(ReadLabBookPaper(margin: wide ? 20 : 10))
+    }
+
+    @ViewBuilder private var storyHomeActions: some View {
+        shuffle
+        if let savedSession { resumeButton(savedSession) }
+    }
+
+    private func startButton(_ theme: ReadingTheme, size: CGFloat) -> some View {
+        Button { begin(theme) } label: {
+            ReadLabMissionCircle(symbol: "play.fill", size: size)
+        }
+        .buttonStyle(ReadLabTapStyle())
+        .accessibilityLabel(path == .hearing ? "Let’s start hearing" : "Let’s start reading")
+        .accessibilityIdentifier("startMissionButton")
+    }
+
+    private func resumeButton(_ session: PracticeSession) -> some View {
+        Button { activeSession = session } label: {
+            Label("Resume \(ReadingTheme.find(session.themeID).title)", systemImage: "arrow.clockwise")
+                .readLabFont(17, weight: .semibold)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .background(.white, in: Capsule())
         }
         .buttonStyle(ReadLabTapStyle())
         .accessibilityIdentifier("resumeSessionButton")
     }
-    private var resumeTitle: String {
-        guard savedSession != nil else { return "Another little adventure" }
-        switch path {
-        case .hearing: return "Resume your last hearing"
-        case .words: return "Resume your last session"
-        case .stories: return "Resume your last reading"
+
+    private func selectNext(_ direction: Int) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+            suggestionIndex = (suggestionIndex + direction + themes.count) % themes.count
         }
     }
-    private func sessionProgress(_ session: PracticeSession) -> Double {
-        guard session.path == .stories else { return session.progress }
-        let story = ReadLabLibrary.story(theme: session.themeID, level: session.contentLevel)
-        if session.showingQuestions {
-            return 0.75 + 0.25 * Double(session.questionIndex) / Double(story.questions.count)
-        }
-        let section = session.storyReading == nil ? story.sectionIndex(forLegacySection: session.sectionIndex) : session.sectionIndex
-        let paragraphs = story.sections[min(section, story.sections.count - 1)]
-        let reading = session.storyReading ?? StoryReadingProgress()
-        let paragraph = min(reading.paragraphIndex, paragraphs.count - 1)
-        let words = max(1, StoryText.wordCount(in: paragraphs[paragraph]))
-        let fraction = (Double(paragraph) + min(1, Double(reading.wordCount) / Double(words))) / Double(paragraphs.count)
-        return 0.75 * (Double(section) + fraction) / Double(story.sections.count)
-    }
+
     private func begin(_ theme: ReadingTheme) {
-        if let saved = savedSession, saved.themeID == theme.id { activeSession = saved }
+        if let savedSession, savedSession.themeID == theme.id { activeSession = savedSession }
         else { activeSession = store.start(path: path, theme: theme) }
     }
-}
-
-#Preview("First words · landscape", traits: .fixedLayout(width: 1366, height: 1024)) {
-    let store = ReadLabStore(defaults: UserDefaults(suiteName: "home.preview.\(UUID())")!)
-    store.data.hasOnboarded = true
-    store.data.selectedPath = .words
-    return ContentView(store: store)
 }

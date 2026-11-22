@@ -7,16 +7,21 @@ struct ReadingTheme: Identifiable, Equatable {
     let detail: String
     let cover: String
 
-    static func themes(for path: ReadingPath) -> [Self] { all.filter { $0.path == path } }
-    static func find(_ id: String) -> Self { all.first { $0.id == id } ?? all[0] }
+    static func themes(for path: ReadingPath) -> [Self] {
+        if path == .stories { return ReadLabIllustratedStories.themes }
+        return all.filter { $0.path == path }
+    }
+    static func find(_ id: String) -> Self {
+        all.first { $0.id == id } ?? all[0]
+    }
     static let all: [Self] = [
         .init(id: "space", path: .hearing, title: "Space", detail: "Collections of words and scientific terminology", cover: "SpaceCover"),
         .init(id: "nature", path: .hearing, title: "Nature", detail: "Listen to the world growing around you", cover: "NatureCover"),
         .init(id: "animals", path: .words, title: "Animals", detail: "Collection of animal words", cover: "AnimalsCover"),
         .init(id: "jobs", path: .words, title: "Jobs", detail: "Meet the people who make things happen", cover: "JobsCover"),
         .init(id: "journey", path: .stories, title: "Journey to the West", detail: "A little adventure, one page at a time", cover: "JourneyCover"),
-        .init(id: "tori", path: .stories, title: "tori’s Path", detail: "Follow a small fox on a big adventure", cover: "toriCover")
-    ]
+        .init(id: "tori", path: .stories, title: "tori’s Path", detail: "Follow a small fox on a big adventure", cover: "ToriiCover")
+    ] + ReadLabIllustratedStories.themes
 }
 
 struct ReadingPrompt: Equatable {
@@ -100,6 +105,7 @@ enum ReadLabLibrary {
     }
 
     static func story(theme: String, level: Int) -> ReadingStory {
+        if let illustrated = ReadLabIllustratedStories.story(theme: theme, level: level) { return illustrated }
         let tier = min(5, max(1, level))
         if theme == "tori" { return foxStory(level: tier) }
         return monkeyStory(level: tier)

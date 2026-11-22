@@ -10,9 +10,9 @@ final class ReadLabSpeechService {
     private(set) var isPreparing = false
     private(set) var isFinishing = false
     private(set) var transcript = ""
-    private(set) var inputLevel: Float = 0
     var message: String?
     private(set) var permissionDenied = false
+    private(set) var canRetry = false
 
     @ObservationIgnored private var engine: AVAudioEngine?
     // The audio tap and the main actor share the current recognition request.
@@ -27,13 +27,26 @@ final class ReadLabSpeechService {
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var resultHandler: ((String, Bool, SpeechWordAlternatives) -> Void)?
 
-    /// Single words can supply a hint. Story reading uses open transcription across segments.
-    func start(target: String? = nil, onNewSegment: (() -> Void)? = nil, onResult: @escaping (String, Bool, SpeechWordAlternatives) -> Void) async {
+    @ObservationIgnored private var listeningEnded: CheckedContinuation<Void, Never>?
+
+    /// Wait for capture to end before starting another attempt or playing a spoken prompt.
+    func listen(target: String? = nil, onNewSegment: (() -> Void)? = nil,
+                onResult: @escaping (String, Bool, SpeechWordAlternatives) -> Void) async {
+        guard !Task.isCancelled else { return }
         cancel()
         let token = generation
+        await start(token: token, target: target, onNewSegment: onNewSegment, onResult: onResult)
+        guard generation == token, !Task.isCancelled, isListening || isFinishing else { return }
+        await withCheckedContinuation { listeningEnded = $0 }
+    }
+
+    /// Single words can supply a hint. Story reading uses open transcription across segments.
+    private func start(token: UUID, target: String?, onNewSegment: (() -> Void)?,
+                       onResult: @escaping (String, Bool, SpeechWordAlternatives) -> Void) async {
         transcript = ""
         message = nil
         permissionDenied = false
+        canRetry = false
         isPreparing = true
         defer { if generation == token { isPreparing = false } }
 
@@ -44,21 +57,22 @@ final class ReadLabSpeechService {
         let speechPermission = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }
-        guard generation == token else { return }
+        guard generation == token, !Task.isCancelled else { return }
         guard speechPermission == .authorized else {
             permissionDenied = speechPermission == .denied
             message = "Voice recognition is not enabled. You can change access in Settings or practise with a grown-up."
             return
         }
         let microphonePermission = await AVAudioApplication.requestRecordPermission()
-        guard generation == token else { return }
+        guard generation == token, !Task.isCancelled else { return }
         guard microphonePermission else {
             permissionDenied = true
             message = "Microphone access is off. You can change access in Settings or practise with a grown-up."
             return
         }
         guard recognizer.isAvailable else {
-            message = "Voice recognition is taking a break. Please try again in a moment."
+            canRetry = true
+            message = "Voice recognition is taking a break."
             return
         }
         do {
@@ -72,25 +86,13 @@ final class ReadLabSpeechService {
             let format = input.outputFormat(forBus: 0)
             guard format.sampleRate > 0 && format.channelCount > 0 else {
                 cancel()
-                message = "Connect a microphone and try again."
+                canRetry = true
+                message = "Connect a microphone to read aloud."
                 return
             }
             let audioInput = self.audioInput
-            input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
                 audioInput.withLockUnchecked { $0?.append(buffer) }
-                // Convert the microphone signal to a 0–1 level for the visual meter.
-                var amplitude: Float = 0
-                if let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 {
-                    let count = Int(buffer.frameLength)
-                    var sum: Float = 0
-                    for i in 0..<count { sum += samples[i] * samples[i] }
-                    amplitude = min(1, sqrt(sum / Float(count)) * 12)
-                }
-                let level = amplitude
-                Task { @MainActor [weak self] in
-                    guard let self, self.generation == token, self.isListening else { return }
-                    self.inputLevel = level
-                }
             }
             tapInstalled = true
             resultHandler = onResult
@@ -100,7 +102,8 @@ final class ReadLabSpeechService {
             isListening = true
         } catch {
             cancel()
-            message = "The microphone couldn’t start. Please try again."
+            canRetry = true
+            message = "The microphone couldn’t start."
         }
     }
 
@@ -143,9 +146,8 @@ final class ReadLabSpeechService {
                         self.cancel()
                     }
                 } else if failed {
-                    // Audio failures leave the current story position available for a retry.
+                    // The exercise renews the request from the saved reading position.
                     self.cancel()
-                    self.message = "I couldn’t hear clearly. Tap the microphone to continue."
                 }
             }
         }
@@ -173,7 +175,6 @@ final class ReadLabSpeechService {
         guard isListening else { return }
         isFinishing = true
         isListening = false
-        inputLevel = 0
         engine?.stop()
         audioInput.withLockUnchecked { $0?.endAudio(); $0 = nil }
         timeoutTask?.cancel()
@@ -185,9 +186,13 @@ final class ReadLabSpeechService {
             let handler = self.resultHandler
             let alternatives = self.segmentAlternatives
             self.cancel()
-            if lastText.isEmpty { self.message = "I didn’t catch any words. Tap the microphone to try again." }
-            else { handler?(lastText, true, alternatives) }
+            if !lastText.isEmpty { handler?(lastText, true, alternatives) }
         }
+    }
+
+    func reportInterruption() {
+        canRetry = true
+        message = "Listening was interrupted."
     }
 
     func cancel() {
@@ -208,36 +213,74 @@ final class ReadLabSpeechService {
         isListening = false
         isPreparing = false
         isFinishing = false
-        inputLevel = 0
         if ownsAudioSession {
             ownsAudioSession = false
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
+        let continuation = listeningEnded
+        listeningEnded = nil
+        continuation?.resume()
     }
 }
 
-/// Plays a spoken example before microphone capture begins.
-@MainActor
-final class ReadLabSpeaker {
-    private let synthesizer = AVSpeechSynthesizer()
-    private var ownsAudioSession = false
-    func speak(_ text: String) {
-        stop()
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-            try AVAudioSession.sharedInstance().setActive(true)
-            ownsAudioSession = true
-            let utterance = AVSpeechUtterance(string: text)
-            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-            utterance.rate = 0.38
-            synthesizer.speak(utterance)
-        } catch { /* Text stays visible when audio output is unavailable. */ }
+/// Releases the playback session before handing audio back to recognition.
+@MainActor @Observable
+final class ReadLabSpeaker: NSObject, AVSpeechSynthesizerDelegate {
+    private(set) var isSpeaking = false
+    @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
+    @ObservationIgnored private var utteranceID: ObjectIdentifier?
+    @ObservationIgnored private var playbackEnded: CheckedContinuation<Bool, Never>?
+
+    override init() {
+        super.init()
+        synthesizer.delegate = self
     }
-    func stop() {
-        synthesizer.stopSpeaking(at: .immediate)
-        if ownsAudioSession {
-            ownsAudioSession = false
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+
+    func speak(_ text: String, pitch: Float = 1) async -> Bool {
+        stop()
+        guard !Task.isCancelled else { return false }
+        do {
+            let audio = AVAudioSession.sharedInstance()
+            try audio.setCategory(.playback, mode: .spokenAudio)
+            try audio.setActive(true)
+        } catch {
+            return false
         }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.rate = 0.38
+        utterance.pitchMultiplier = pitch
+        utteranceID = ObjectIdentifier(utterance)
+        isSpeaking = true
+        return await withCheckedContinuation { continuation in
+            playbackEnded = continuation
+            synthesizer.speak(utterance)
+        }
+    }
+
+    func stop() {
+        guard let id = utteranceID else { return }
+        synthesizer.stopSpeaking(at: .immediate)
+        finish(id, completed: false)
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        let id = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in self?.finish(id, completed: true) }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        let id = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in self?.finish(id, completed: false) }
+    }
+
+    private func finish(_ id: ObjectIdentifier, completed: Bool) {
+        guard utteranceID == id else { return }
+        utteranceID = nil
+        isSpeaking = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        let continuation = playbackEnded
+        playbackEnded = nil
+        continuation?.resume(returning: completed)
     }
 }
