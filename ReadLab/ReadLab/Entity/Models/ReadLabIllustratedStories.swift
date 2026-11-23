@@ -35,6 +35,15 @@ enum ReadLabIllustratedStories {
         return String(theme.cover.dropLast(2)) + String(format: "%02d", min(9, max(1, page)))
     }
 
+    static func quizArtwork(for themeID: String) -> String? {
+        switch themeID {
+        case "monkey-adventure": "MonkeyAdventureQuiz"
+        case "journey-to-west", "journey": "JourneyWestQuiz"
+        case "poor-little-bird": "PoorLittleBirdQuiz"
+        default: nil
+        }
+    }
+
     private static let monkey = (
         captions: [
             "Monkey follows a quiet path through the jungle.",

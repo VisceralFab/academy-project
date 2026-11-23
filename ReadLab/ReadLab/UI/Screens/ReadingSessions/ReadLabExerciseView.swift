@@ -115,6 +115,16 @@ struct ReadLabExerciseView: View {
             ZStack {
                 if session.path == .stories && !session.showingQuestions && !session.completed {
                     Color.white.ignoresSafeArea()
+                } else if session.path == .stories, session.showingQuestions, !session.completed,
+                          let artwork = ReadLabIllustratedStories.quizArtwork(for: session.themeID) {
+                    GeometryReader { background in
+                        ReadLabMissionArt(name: artwork)
+                            .scaledToFill()
+                            .frame(width: background.size.width, height: background.size.height, alignment: .bottom)
+                            .clipped()
+                    }
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
                 } else {
                     ReadLabMissionArt(name: backgroundName).ignoresSafeArea()
                 }
