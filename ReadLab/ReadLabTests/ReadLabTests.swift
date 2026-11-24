@@ -356,7 +356,7 @@ struct ReadLabTests {
     }
 
     @Test func phoneticMatcherLimitsNearMatchesAndHandlesUnknownWords() {
-        let matcher = PhoneticMatcher()
+        let matcher = PhoneticMatcher(configuration: .growingReader)
         #expect(matcher.matches("heels", expected: "hills"))
         #expect(!matcher.matches("wheels", expected: "hills"))
         #expect(!matcher.matches("bed", expected: "bad"))
@@ -367,6 +367,176 @@ struct ReadLabTests {
         let custom = PhoneticMatcher(configuration: .init(allowedVowelPairs: [.init("AE", "EH")]))
         #expect(custom.matches("bed", expected: "bad"))
         #expect(!custom.matches("heels", expected: "hills"))
+    }
+
+    @Test func growingReaderAcceptsDictionaryHomophonesWithPunctuationAndApostrophes() {
+        let matcher = PhoneticMatcher()
+        let groups = [
+            ["its", "it's", "it’s", "ITʼS!"], ["sea", "see"], ["to", "too", "two"],
+            ["their", "there", "they're", "they’re"], ["weak", "week"],
+            ["through", "threw"], ["right", "write", "rite"], ["new", "knew"],
+            // Additional dictionary homophones exercise the general rule, beyond the examples.
+            ["flour", "flower"], ["knight", "night"], ["sole", "soul"], ["pair", "pear"]
+        ]
+        for group in groups {
+            for expected in group {
+                for recognized in group {
+                    #expect(matcher.matches(Substring(recognized), expected: Substring(expected)))
+                }
+            }
+        }
+        #expect(!matcher.matches("heels", expected: "hills")) // CMUdict has different vowels.
+        #expect(!matcher.matches("", expected: ""))
+        #expect(!matcher.matches("sea see", expected: "see"))
+        #expect(StoryText.words(in: "“It’s” Monkey's; they're here.") == ["it's", "monkey's", "they're", "here"])
+        #expect(StoryText.wordCount(in: "Its egg. It’s safe.") == 4)
+        #expect(StoryText.wordCount(in: "'its' ‘egg’") == 2)
+        let highlighted = StoryText.highlighted("It’s safe.", through: 1)
+        #expect(String(highlighted.characters) == "It’s safe.")
+        #expect(String(highlighted[highlighted.runs.first!.range].characters) == "It’s")
+        #expect(highlighted.runs.first?.backgroundColor == ReadLabStyle.sky)
+        #expect(highlighted.runs.last?.backgroundColor == nil)
+        // The exact prompt matcher and normalization used by the other paths are unchanged.
+        #expect(SpeechMatch.normalized("It's") == "it s")
+        #expect(!SpeechMatch.matches("its", target: "it's"))
+        #expect(!SpeechMatch.matches("walk", target: "walks"))
+        #expect(!SpeechMatch.matches("pick up", target: "picks up"))
+    }
+
+    @Test func growingReaderLimitsRecognitionExceptionsToExpectedWords() {
+        let matcher = PhoneticMatcher(configuration: .growingReader)
+        let pairs: [(Substring, Substring)] = [
+            ("hills", "heels"), ("walking", "working"), ("reach", "rich"), ("slip", "sleep"),
+            ("branch", "brunch"), ("branches", "brunches"), ("ball", "bowl"),
+            ("sitting", "setting"), ("warm", "worm"), ("chirp", "chip"),
+            ("chirps", "chips"), ("chirps", "chip"), ("chirping", "chipping"),
+            ("twigs", "tweaks"), ("twigs", "tweets"), ("fall", "fault"),
+            ("walks", "walk"), ("walks", "works"), ("picks", "pics"), ("picks", "pizza")
+        ]
+        for (expected, recognized) in pairs {
+            #expect(matcher.matches(recognized, expected: expected))
+            #expect(!matcher.matches(expected, expected: recognized))
+            var cursor = StorySpeechCursor()
+            #expect(cursor.advance(transcript: String(recognized), target: [expected], from: 0) == 1)
+        }
+        // Neither vowel substitutions nor dropped final consonants become general rules.
+        for (expected, recognized): (Substring, Substring) in [
+            ("ship", "sheep"), ("hill", "heel"), ("bed", "bad"), ("cat", "cut"),
+            ("walks", "work"), ("walks", "walls"), ("picks", "pick"),
+            ("birds", "bird"), ("helps", "help"), ("chirps", "chirp"),
+            ("twigs", "twig"), ("fall", "falls"), ("branch", "branches"),
+            ("pick", "pics"), ("pick", "pizza"), ("picks", "pieces")
+        ] {
+            #expect(!matcher.matches(recognized, expected: expected))
+        }
+    }
+
+    @Test func growingReaderHandlesPickUpOnlyInTheRequestedPhrase() {
+        var cursor = StorySpeechCursor()
+        let target = StoryText.words(in: "Monkey picks up strong twigs.")
+        #expect(cursor.advance(transcript: "Monkey pick", target: target, from: 0) == 1)
+        #expect(cursor.advance(transcript: "Monkey pick up strong tweaks", target: target, from: 1) == target.count)
+        var isolated = StorySpeechCursor()
+        #expect(isolated.advance(transcript: "pick a banana", target: StoryText.words(in: "picks a banana"), from: 0) == 0)
+        var repeated = StorySpeechCursor()
+        let repeatedTarget = StoryText.words(in: "picks up picks up")
+        #expect(repeated.advance(transcript: "pick up", target: repeatedTarget, from: 0) == 2)
+        #expect(repeated.advance(transcript: "picks up", target: repeatedTarget, from: 2) == 2)
+        #expect(repeated.advance(transcript: "picks up pick up", target: repeatedTarget, from: 2) == 4)
+    }
+
+    @Test func growingReaderDoesNotCreditExceptionRevisionsTwice() {
+        var cursor = StorySpeechCursor()
+        let target = StoryText.words(in: "walks walk works walks")
+        #expect(cursor.advance(transcript: "walks", target: target, from: 0) == 1)
+        for transcript in ["walk", "works", "walks", "works"] {
+            #expect(cursor.advance(transcript: transcript, target: target, from: 1) == 1)
+        }
+        #expect(cursor.advance(transcript: "works walk works walk", target: target, from: 1) == 4)
+        var contractions = StorySpeechCursor()
+        let contractionTarget = StoryText.words(in: "Its egg. It’s safe.")
+        #expect(contractions.advance(transcript: "It's egg", target: contractionTarget, from: 0) == 2)
+        #expect(contractions.advance(transcript: "Its egg its safe", target: contractionTarget, from: 2) == 4)
+        var picks = StorySpeechCursor()
+        let picksTarget = StoryText.words(in: "He picks picks a banana.")
+        #expect(picks.advance(transcript: "He pics", target: picksTarget, from: 0) == 2)
+        for transcript in ["He pizza", "He picks", "He pics"] {
+            #expect(picks.advance(transcript: transcript, target: picksTarget, from: 2) == 2)
+        }
+        #expect(picks.advance(transcript: "He pics pizza a banana", target: picksTarget, from: 2) == picksTarget.count)
+        #expect(!SpeechMatch.matches("pics", target: "picks"))
+        #expect(!SpeechMatch.matches("pizza", target: "picks"))
+    }
+
+    @Test func growingReaderPreservesOriginalStoryWhenAcceptingSpeechErrors() {
+        let story = ReadingStory(title: "Bird", sections: [["He picks up twigs. Bird chirps. Its egg is warm."]], questions: [])
+        var session = PracticeSession(path: .stories, themeID: "poor-little-bird")
+        var cursor = StorySpeechCursor()
+        session.prepareStoryReading(in: story)
+        #expect(session.readStoryTranscript("He pick up tweets bird chip it's egg is worm", cursor: &cursor, in: story) == story.sections[0])
+        #expect(session.showingQuestions)
+        #expect(session.practiced == 1)
+        #expect(story.sections[0][0] == "He picks up twigs. Bird chirps. Its egg is warm.")
+        for age: ReadLabAgeRange in [.fourFive, .sixSeven] {
+            let monkey = ReadLabLibrary.story(theme: "monkey-adventure", level: 1, age: age)
+            let original = monkey.sections[0][0]
+            let bananaPage = monkey.sections.flatMap { $0 }[2]
+            for variant in ["picks", "pics", "pizza"] {
+                var bananaCursor = StorySpeechCursor()
+                let target = StoryText.words(in: bananaPage)
+                #expect(bananaCursor.advance(transcript: bananaPage.replacingOccurrences(of: "picks", with: variant),
+                                            target: target, from: 0) == target.count)
+            }
+            for variant in ["walks", "walk", "works"] {
+                var monkeySession = PracticeSession(path: .stories, themeID: "monkey-adventure")
+                var monkeyCursor = StorySpeechCursor()
+                monkeySession.prepareStoryReading(in: monkey)
+                #expect(monkeySession.readStoryTranscript(original.replacingOccurrences(of: "walks", with: variant),
+                                                         cursor: &monkeyCursor, in: monkey) == [original])
+                #expect(monkeySession.storyReading == StoryReadingProgress(paragraphIndex: 1))
+            }
+        }
+        let text = "She head the bird."
+        let alternatives = SpeechWordAlternatives(text: text, segments: [
+            .init(range: (text as NSString).range(of: "head"), alternatives: ["herd"])
+        ])
+        cursor = StorySpeechCursor()
+        #expect(cursor.advance(transcript: text, target: StoryText.words(in: "She heard the bird."), from: 0, alternatives: alternatives) == 4)
+        cursor = StorySpeechCursor()
+        let repeatedTarget = StoryText.words(in: "heard heard")
+        let repeatedAlternatives = SpeechWordAlternatives(text: "head", segments: [
+            .init(range: NSRange(location: 0, length: 4), alternatives: ["heard"])
+        ])
+        #expect(cursor.advance(transcript: "head", target: repeatedTarget, from: 0, alternatives: repeatedAlternatives) == 1)
+        #expect(cursor.advance(transcript: "heard", target: repeatedTarget, from: 1) == 1)
+        #expect(cursor.advance(transcript: "heard heard", target: repeatedTarget, from: 1) == 2)
+    }
+
+    @Test func storyAnimalTargetsFollowFittedAndCroppedIllustrations() throws {
+        for prefix in ["MonkeyAdventure", "JourneyWest", "PoorLittleBird"] {
+            for page in 1...9 {
+                let artwork = prefix + String(format: "%02d", page)
+                let image = try #require(UIImage(named: artwork))
+                let targets = StoryAnimalTarget.targets(for: artwork)
+                #expect(!targets.isEmpty)
+                #expect(Set(targets.map(\.id)).count == targets.count)
+                for target in targets {
+                    #expect(CGRect(x: 0, y: 0, width: 1, height: 1).contains(target.bounds))
+                    let frame = target.frame(imageSize: image.size, viewport: image.size, mode: .fit)
+                    #expect(abs(frame.midX / image.size.width - target.bounds.midX) < 0.001)
+                    #expect(abs(frame.midY / image.size.height - target.bounds.midY) < 0.001)
+                }
+            }
+        }
+        #expect(StoryAnimalTarget.targets(for: "AnimalsCover").isEmpty)
+        #expect(StoryAnimalTarget.targets(for: "MonkeyAdventureQuiz").isEmpty)
+        let monkey = try #require(StoryAnimalTarget.targets(for: "MonkeyAdventure01").first)
+        let imageSize = CGSize(width: 1000, height: 750)
+        let portrait = CGSize(width: 400, height: 800)
+        let fitted = monkey.frame(imageSize: imageSize, viewport: portrait, mode: .fit)
+        #expect(abs(fitted.minY - (250 + monkey.bounds.minY * 300)) < 0.001)
+        let cropped = monkey.frame(imageSize: imageSize, viewport: portrait, mode: .fill)
+        #expect(abs(cropped.midX - (200 + (monkey.bounds.midX - 0.5) * 800 / 0.75)) < 0.001)
     }
 
     @Test func storyDoesNotCreditRevisedSoundAlikesTwice() {

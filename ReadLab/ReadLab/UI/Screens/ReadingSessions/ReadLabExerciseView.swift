@@ -25,6 +25,7 @@ struct ReadLabExerciseView: View {
         enum Content: Equatable {
             case narration(String)
             case effect(ReadLabSound)
+            case animalEffect(ReadLabSound)
         }
 
         let id = UUID()
@@ -390,17 +391,6 @@ struct ReadLabExerciseView: View {
                 .padding(.vertical, 8)
                 .background(.white.opacity(0.9), in: Capsule())
                 .accessibilityIdentifier("exerciseProgress")
-            if audio?.effectsEnabled == true {
-                Button { requestSound(.monkeyMascot) } label: {
-                    Image("Monkey").resizable().scaledToFit()
-                        .frame(width: 28, height: 28)
-                        .frame(width: 44, height: 44)
-                        .background(.white.opacity(0.9), in: Circle())
-                }
-                .buttonStyle(ReadLabTapStyle())
-                .accessibilityLabel("Play monkey sound")
-                .accessibilityIdentifier("storyMascotSound")
-            }
             grownUpMenu
         }
     }
@@ -461,6 +451,15 @@ struct ReadLabExerciseView: View {
             .padding(.bottom, compact ? 100 : 92)
         }
         .frame(width: width, height: height)
+        .overlay {
+            if played, audio?.effectsEnabled == true {
+                ReadLabStoryAnimalTargets(artwork: art, viewport: CGSize(width: width, height: height),
+                                          mode: compact ? .fit : .fill,
+                                          enabled: !animalSoundPending && !reading.paragraphComplete && !audioInterrupted,
+                                          playingSound: pendingAnimalSound, onTap: requestAnimalSound)
+                    .clipped()
+            }
+        }
         .modifier(ReadLabBookPaper(margin: margin, paper: .white))
     }
 
@@ -570,6 +569,10 @@ struct ReadLabExerciseView: View {
         if audioInterrupted {
             Button("Resume listening") { audioInterrupted = false }
                 .buttonStyle(.bordered)
+        } else if animalSoundPending {
+            Label("Listening paused…", systemImage: "pause.circle")
+                .readLabFont(18, weight: .medium)
+                .accessibilityIdentifier("storyAnimalPause")
         } else if speaker.isSpeaking {
             Label("Listen first…", systemImage: "speaker.wave.2")
                 .readLabFont(18, weight: .medium)
@@ -593,14 +596,6 @@ struct ReadLabExerciseView: View {
                       systemImage: listening ? "waveform" : "ear")
                     .readLabFont(18, weight: .medium)
                     .accessibilityIdentifier("practiceListeningState")
-                if listening && !speech.transcript.isEmpty {
-                    Text(verbatim: speech.transcript)
-                        .readLabFont(16, rounded: false)
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                        .accessibilityLabel("Heard: \(speech.transcript)")
-                        .accessibilityIdentifier("liveSpeechTranscript")
-                }
             }
             .multilineTextAlignment(.center)
         }
@@ -670,6 +665,10 @@ struct ReadLabExerciseView: View {
         case .effect(let sound):
             await effects.play(sound)
             try? await Task.sleep(for: .milliseconds(250))
+        case .animalEffect(let sound):
+            await effects.play(sound)
+            // Keep capture paused for the speaker tail and ignore repeated animal taps.
+            try? await Task.sleep(for: .milliseconds(750))
         }
         if !Task.isCancelled { playedPreviewID = replay.id }
     }
@@ -700,6 +699,21 @@ struct ReadLabExerciseView: View {
     private func requestSound(_ sound: ReadLabSound) {
         stopAudio()
         preview = Preview(content: .effect(sound))
+    }
+
+    private var animalSoundPending: Bool { pendingAnimalSound != nil }
+
+    private var pendingAnimalSound: ReadLabSound? {
+        guard let preview, preview.id != playedPreviewID,
+              case .animalEffect(let sound) = preview.content else { return nil }
+        return sound
+    }
+
+    private func requestAnimalSound(_ sound: ReadLabSound) {
+        guard session.path == .stories, !animalSoundPending, audio?.effectsEnabled == true,
+              visible, scenePhase == .active, !audioInterrupted, !reading.paragraphComplete else { return }
+        stopAudio()
+        preview = Preview(content: .animalEffect(sound))
     }
 
     private var completion: some View {

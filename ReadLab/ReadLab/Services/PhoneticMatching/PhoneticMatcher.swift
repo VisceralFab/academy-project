@@ -14,7 +14,18 @@ struct PhoneticMatcher {
 
     struct Configuration {
         /// One substitution from this set is allowed within an otherwise identical pronunciation.
-        var allowedVowelPairs: Set<VowelPair> = [VowelPair("IH", "IY")]
+        var allowedVowelPairs: Set<VowelPair> = []
+        /// Directional recognition errors, scoped to Growing Reader's next expected word.
+        var storyAlternatives: [Substring: Set<Substring>] = [:]
+
+        static let growingReader = Configuration(storyAlternatives: [
+            "hills": ["heels"], "walking": ["working"], "reach": ["rich"],
+            "slip": ["sleep"], "branch": ["brunch"], "branches": ["brunches"],
+            "ball": ["bowl"], "sitting": ["setting"], "warm": ["worm"],
+            "chirp": ["chip"], "chirps": ["chips", "chip"], "chirping": ["chipping"],
+            "twigs": ["tweaks", "tweets"], "fall": ["fault"],
+            "walks": ["walk", "works"], "picks": ["pics", "pizza"]
+        ])
     }
 
     let configuration: Configuration
@@ -43,10 +54,10 @@ struct PhoneticMatcher {
     }()
 
     func matches(_ recognized: Substring, expected: Substring) -> Bool {
-        if recognized == expected { return true }
-        let spoken = recognized.lowercased()[...]
-        let target = expected.lowercased()[...]
+        guard let spoken = StoryText.words(in: String(recognized)).only,
+              let target = StoryText.words(in: String(expected)).only else { return false }
         if spoken == target { return true }
+        if configuration.storyAlternatives[target]?.contains(spoken) == true { return true }
         guard let recognizedVariants = Self.pronunciations[spoken],
               let expectedVariants = Self.pronunciations[target] else { return false }
         return recognizedVariants.contains { heard in
@@ -69,4 +80,8 @@ struct PhoneticMatcher {
         }
         return substituted
     }
+}
+
+private extension Array where Element == Substring {
+    var only: Substring? { count == 1 ? first : nil }
 }

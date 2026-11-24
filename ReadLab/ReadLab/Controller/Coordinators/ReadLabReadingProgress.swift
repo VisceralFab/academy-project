@@ -3,10 +3,18 @@ import SwiftUI
 
 /// Uses the same word boundaries for recognition, the counter, and highlighting.
 enum StoryText {
-    private static let wordPattern = #/[\p{L}\p{M}\p{N}]+/#
+    private static let wordPattern = #/[\p{L}\p{M}\p{N}]+(?:['’‘ʼ＇][\p{L}\p{M}\p{N}]+)*/#
 
     static func words(in text: String) -> [Substring] {
-        SpeechMatch.normalized(text).split(separator: " ")
+        // Preserve contractions and possessives as dictionary words. Other paths keep
+        // their existing SpeechMatch normalization and exact prompt comparison.
+        let folded = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US"))
+        return folded.matches(of: wordPattern).map {
+            Substring($0.output.replacingOccurrences(of: "’", with: "'")
+                .replacingOccurrences(of: "‘", with: "'")
+                .replacingOccurrences(of: "ʼ", with: "'")
+                .replacingOccurrences(of: "＇", with: "'"))
+        }
     }
 
     static func wordCount(in text: String) -> Int {
@@ -58,8 +66,8 @@ struct SpeechWordAlternatives {
         }
     }
 
-    func contains(_ expected: Substring, at position: Int) -> Bool {
-        wordsByPosition[position]?.contains(expected) == true
+    func contains(_ expected: Substring, at position: Int, using matcher: PhoneticMatcher) -> Bool {
+        wordsByPosition[position]?.contains { matcher.matches($0, expected: expected) } == true
     }
 }
 
@@ -71,23 +79,40 @@ private extension Array where Element == Substring {
 struct StorySpeechCursor {
     private var previousTranscript: [Substring] = []
     private var consumedWords = 0
-    private let phonetics = PhoneticMatcher()
+    private var creditedWords: [Int: (expected: Substring, recognized: Substring)] = [:]
+    private let phonetics = PhoneticMatcher(configuration: .growingReader)
 
     mutating func advance(transcript: String, target: [Substring], from wordCount: Int, alternatives: SpeechWordAlternatives = .init()) -> Int {
         guard target.indices.contains(wordCount) else { return wordCount }
         let words = StoryText.words(in: transcript)
         // A new spelling of the same sound may revise a credited word, but cannot credit it twice.
-        let prefix = zip(previousTranscript, words).prefix { phonetics.matches($1, expected: $0) }.count
+        let prefix = zip(previousTranscript, words).enumerated().prefix { index, pair in
+            if pair.0 == pair.1 { return true }
+            // Compare revisions against the original credited word, including asymmetric
+            // exceptions such as walks → walk/works, so they cannot credit a word twice.
+            if let credited = creditedWords[index] {
+                // Preserve the actual accepted spelling too: it can have been credited
+                // via an aligned Speech alternative or the contextual picks up rule.
+                return (pair.0 == credited.recognized || phonetics.matches(pair.0, expected: credited.expected)) &&
+                    (pair.1 == credited.recognized || phonetics.matches(pair.1, expected: credited.expected))
+            }
+            return phonetics.matches(pair.1, expected: pair.0)
+        }.count
         if words.count < previousTranscript.count && prefix == words.count { return wordCount }
         let start = unconsumedStart(in: words, sharedPrefix: prefix, expecting: target[wordCount], alternatives: alternatives)
         previousTranscript = words
         consumedWords = start
+        creditedWords = creditedWords.filter { $0.key < start }
 
         var next = wordCount
         for index in start..<words.count where next < target.count {
             // Ignore filler and corrections until the next required word is heard.
-            guard phonetics.matches(words[index], expected: target[next]) ||
-                  alternatives.contains(target[next], at: index) else { continue }
+            let picksUp = target[next] == "picks" && words[index] == "pick" &&
+                target.indices.contains(next + 1) && target[next + 1] == "up" &&
+                words.indices.contains(index + 1) && words[index + 1] == "up"
+            guard phonetics.matches(words[index], expected: target[next]) || picksUp ||
+                  alternatives.contains(target[next], at: index, using: phonetics) else { continue }
+            creditedWords[index] = (expected: target[next], recognized: words[index])
             next += 1
             consumedWords = index + 1
         }
@@ -98,7 +123,7 @@ struct StorySpeechCursor {
         guard prefix < consumedWords else { return consumedWords }
         // Speech can replace an earlier phrase with a new fragment after a pause.
         if prefix == 0, let first = words.first,
-           phonetics.matches(first, expected: nextWord) || alternatives.contains(nextWord, at: 0) { return 0 }
+           phonetics.matches(first, expected: nextWord) || alternatives.contains(nextWord, at: 0, using: phonetics) { return 0 }
         let changes = words.difference(from: previousTranscript)
         let removed = Set(changes.removals.compactMap { change -> Int? in
             guard case let .remove(offset, _, _) = change, offset < consumedWords else { return nil }

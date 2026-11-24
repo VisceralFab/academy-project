@@ -44,6 +44,19 @@ struct ContentView: View {
         .environment(\.useDyslexicFont, store.data.preferences.useDyslexicFont)
         .tint(ReadLabStyle.ink)
         .preferredColorScheme(.light)
+        .overlay(alignment: .topLeading) {
+            if ProcessInfo.processInfo.arguments.contains("--uitesting") {
+                // Report SwiftUI's actual layout, independent of XCTest's physical screen coordinates.
+                GeometryReader { geometry in
+                    Text(geometry.size.width > geometry.size.height ? "landscape" : "portrait")
+                        .font(.system(size: 1))
+                        .foregroundStyle(.clear)
+                        .frame(width: 1, height: 1)
+                        .accessibilityIdentifier("appLayoutOrientation")
+                        .allowsHitTesting(false)
+                }
+            }
+        }
         .alert("Saved journey", isPresented: Binding(get: { store.storageMessage != nil }, set: { if !$0 { store.storageMessage = nil } })) {
             Button("Continue", role: .cancel) { store.storageMessage = nil }
         } message: { Text(store.storageMessage ?? "") }
@@ -54,6 +67,6 @@ struct ContentView: View {
     ContentView(store: ReadLabStore(defaults: UserDefaults(suiteName: "readlab.preview.\(UUID())")!))
 }
 
-#Preview("Complete app · portrait", traits: .fixedLayout(width: 820, height: 1180)) {
+#Preview("Complete app · iPad mini landscape", traits: .fixedLayout(width: 1133, height: 744)) {
     ContentView(store: ReadLabStore(defaults: UserDefaults(suiteName: "readlab.preview.\(UUID())")!))
 }

@@ -1,6 +1,6 @@
 # ReadLab
 
-App SwiftUI per iPad: un percorso di lettura in inglese che parte da suoni e parole e arriva alla comprensione di storie. Layout principale in orizzontale, con disposizione adattiva in verticale.
+App SwiftUI esclusivamente per iPad: un percorso di lettura in inglese che parte da suoni e parole e arriva alla comprensione di storie. L’interfaccia usa la modalità a schermo intero e rimane in orizzontale anche ruotando il dispositivo in verticale; sono supportati entrambi i versi orizzontali. Il progetto non include un target iPhone.
 
 Aprire `ReadLab/ReadLab.xcodeproj` in Xcode. Il progetto usa il formato `project.xcproj` di Xcode 27.2 e mantiene il deployment target originale iOS/iPadOS 27.2.
 
