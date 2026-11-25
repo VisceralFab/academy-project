@@ -79,7 +79,7 @@ enum ReadLabPerformanceReport {
                             "\(t.completedActivities)", "\(t.attempts)", "\(t.successfulAnswers)",
                             rate(t.successfulAnswers, t.attempts)]
                 })
-        w.paragraph("The starting level is based on age (1 = easiest, 5 = hardest). Three correct answers in a row raise the level. Two misses in a row or two unfinished activities replaced after a miss lower it.",
+        w.paragraph("The starting level is based on age (1 = easiest, 5 = hardest). In word practice, completing a topic unlocks its next level. In stories, three correct responses raise the level. Repeated misses can lower the level in any path.",
                     font: .systemFont(ofSize: 9), color: ReportWriter.muted)
 
         // Per theme

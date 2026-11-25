@@ -150,6 +150,12 @@ struct StoryReadingProgress: Codable, Equatable {
 }
 
 extension PracticeSession {
+    func pagesRead(in story: ReadingStory) -> Int {
+        let current = story.sections.prefix(sectionIndex).reduce(0) { $0 + $1.count }
+            + (storyReading?.paragraphIndex ?? 0) + (storyReading?.paragraphComplete == true ? 1 : 0)
+        return max(current, furthestStoryPageRead ?? 0)
+    }
+
     /// New optional state keeps journeys saved before word tracking decodable.
     mutating func prepareStoryReading(in story: ReadingStory) {
         guard storyReading == nil else { return }

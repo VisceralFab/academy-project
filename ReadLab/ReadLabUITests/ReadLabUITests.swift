@@ -62,7 +62,7 @@ final class ReadLabUITests: XCTestCase {
         let fontEnabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "1"), object: dyslexicFont)
         XCTAssertEqual(XCTWaiter.wait(for: [fontEnabled], timeout: 5), .completed)
         app.buttons["Done"].tap()
-        app.buttons["resumeSessionButton"].tap()
+        app.buttons["startMissionButton"].tap()
         assertSingleSyllableRow("paleontologist", app: app)
         capture("first-words-long-word-opendyslexic", app: app)
     }
@@ -125,8 +125,10 @@ final class ReadLabUITests: XCTestCase {
         XCTAssertTrue(app.buttons["startMissionButton"].label.contains("Jobs"))
         XCTAssertTrue(app.buttons["mascotButton"].isHittable)
         app.buttons["mascotButton"].tap()
+        let topicCard = app.buttons["startMissionButton"]
+        XCTAssertEqual(topicCard.value as? String, "Level Medium, 0 of 6 words")
         capture("05-first-words-home", app: app)
-        app.buttons["startMissionButton"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.35)).tap()
+        topicCard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.83)).tap()
         XCTAssertTrue(app.sliders["Syllable focus"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["storyMascotSound"].exists)
         capture("06-first-words-exercise", app: app)
@@ -148,8 +150,9 @@ final class ReadLabUITests: XCTestCase {
         app.terminate()
         app.launchArguments = ["--uitesting"]
         app.launch()
-        XCTAssertTrue(app.buttons["resumeSessionButton"].waitForExistence(timeout: 10))
-        app.buttons["resumeSessionButton"].tap()
+        XCTAssertTrue(app.buttons["startMissionButton"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["resumeSessionButton"].exists)
+        app.buttons["startMissionButton"].tap()
         XCTAssertTrue(app.staticTexts["1 of 6"].waitForExistence(timeout: 5))
         app.buttons["closeActivityButton"].tap()
 
@@ -165,8 +168,15 @@ final class ReadLabUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["2 of 6"].waitForExistence(timeout: 5))
         app.buttons["closeActivityButton"].tap()
 
+        XCTAssertEqual(topicCard.value as? String, "Level Medium, 1 of 6 words")
         changePath("Growing readers", app: app)
-        XCTAssertTrue(app.staticTexts["Monkey’s Adventure"].exists)
+        let storyTitle = app.staticTexts["Monkey’s Adventure"]
+        let pageProgress = app.staticTexts["homeProgressCount"]
+        XCTAssertTrue(storyTitle.exists)
+        XCTAssertFalse(app.staticTexts["1 of 3"].exists)
+        XCTAssertEqual(pageProgress.label, "0 of 9 pages")
+        XCTAssertLessThan(storyTitle.frame.maxY, pageProgress.frame.minY)
+        XCTAssertLessThan(pageProgress.frame.maxY, topicCard.frame.minY)
         app.buttons["suggestAnotherTopicButton"].tap()
         XCTAssertTrue(app.staticTexts["Journey to the West"].exists)
         app.buttons["suggestAnotherTopicButton"].tap()
@@ -196,16 +206,10 @@ final class ReadLabUITests: XCTestCase {
         confirmParagraphWithGrownUp(app: app)
         XCTAssertTrue(app.staticTexts["Page 2 of 9"].waitForExistence(timeout: 6))
         app.buttons["closeActivityButton"].tap()
-        let suggest = app.buttons["suggestAnotherTopicButton"]
-        let storyResume = app.buttons["resumeSessionButton"]
-        XCTAssertTrue(storyResume.waitForExistence(timeout: 5))
-        XCTAssertTrue(suggest.isHittable && storyResume.isHittable)
-        XCTAssertEqual(suggest.frame.width, storyResume.frame.width, accuracy: 1)
-        XCTAssertEqual(suggest.frame.height, storyResume.frame.height, accuracy: 1)
-        XCTAssertEqual(suggest.frame.midY, storyResume.frame.midY, accuracy: 1)
-        XCTAssertGreaterThanOrEqual(storyResume.frame.minX - suggest.frame.maxX, 12)
-        capture("10a-fixed-story-home-equal-actions", app: app)
-        app.buttons["resumeSessionButton"].tap()
+        XCTAssertFalse(app.buttons["resumeSessionButton"].exists)
+        XCTAssertEqual(app.staticTexts["homeProgressCount"].label, "1 of 9 pages")
+        capture("10a-fixed-story-home-progress", app: app)
+        app.buttons["startMissionButton"].tap()
         XCTAssertTrue(app.staticTexts["Page 2 of 9"].waitForExistence(timeout: 5))
         capture("10b-story-resume", app: app)
         for page in 3...9 {
@@ -225,7 +229,7 @@ final class ReadLabUITests: XCTestCase {
         app.buttons["answerOption1"].tap()
         tapEnabled("Next Question", app: app)
         app.buttons["closeActivityButton"].tap()
-        app.buttons["resumeSessionButton"].tap()
+        app.buttons["startMissionButton"].tap()
         XCTAssertTrue(app.staticTexts["What fruit did Monkey eat?"].waitForExistence(timeout: 5))
         app.buttons["answerOption2"].tap()
         tapEnabled("Next Question", app: app)
@@ -261,12 +265,12 @@ final class ReadLabUITests: XCTestCase {
         // Restore the device orientation before testing vertical gestures in Settings.
         XCUIDevice.shared.orientation = .landscapeLeft
         changePath("First words", app: app)
-        app.buttons["resumeSessionButton"].tap()
+        app.buttons["startMissionButton"].tap()
         XCTAssertTrue(app.staticTexts["1 of 6"].waitForExistence(timeout: 5))
         capture("13-first-words-landscape-locked", app: app)
         app.buttons["closeActivityButton"].tap()
         changePath("Hearing sounds", app: app)
-        app.buttons["resumeSessionButton"].tap()
+        app.buttons["startMissionButton"].tap()
         XCTAssertTrue(app.staticTexts["2 of 6"].waitForExistence(timeout: 5))
         // A physical microphone is not available in automation. Verify the supported fallback flow.
         XCTAssertTrue(app.buttons["More"].waitForExistence(timeout: 5))
@@ -289,9 +293,9 @@ final class ReadLabUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
         capture("17-large-text-account", app: app)
         app.buttons["Done"].tap()
-        let resume = app.buttons["resumeSessionButton"]
-        for _ in 0..<5 where !resume.isHittable { app.swipeUp() }
-        resume.tap()
+        let activity = app.buttons["startMissionButton"]
+        for _ in 0..<5 where !activity.isHittable { app.swipeUp() }
+        activity.tap()
         XCTAssertTrue(app.buttons["closeActivityButton"].waitForExistence(timeout: 5))
         let prompt = app.buttons["readingPrompt"]
         for _ in 0..<5 where !prompt.isHittable { app.swipeUp() }
@@ -303,7 +307,8 @@ final class ReadLabUITests: XCTestCase {
         XCTAssertEqual(app.scrollViews.count, 0)
         XCTAssertTrue(app.buttons["startMissionButton"].isHittable)
         XCTAssertTrue(app.buttons["suggestAnotherTopicButton"].isHittable)
-        XCTAssertTrue(app.buttons["resumeSessionButton"].isHittable)
+        XCTAssertTrue(app.staticTexts["homeProgressCount"].isHittable)
+        XCTAssertFalse(app.buttons["resumeSessionButton"].exists)
         capture("19-large-text-fixed-story-home", app: app)
 
     }

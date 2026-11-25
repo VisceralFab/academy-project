@@ -137,11 +137,71 @@ struct ReadLabTests {
         store.update(replacement)
 
         let restored = ReadLabStore(defaults: defaults)
-        #expect(restored.level(forStarting: space) == 4)
+        #expect(restored.plannedSession(for: space).contentLevel == 3)
         #expect(restored.level(for: .hearing) == 5)
-        #expect(restored.start(path: .hearing, theme: space).contentLevel == 4)
+        #expect(restored.open(space).contentLevel == 3)
         #expect(restored.level(for: .words) == 5)
         #expect(restored.data.totals[ReadingPath.hearing.rawValue]?.attempts == 3)
+    }
+
+    @Test func finishingAWordLevelUnlocksTheNextLevelForThatTopic() throws {
+        let suite = "readlab.tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ReadLabStore(defaults: defaults)
+        let jobs = ReadingTheme.find("jobs")
+        let animals = ReadingTheme.find("animals")
+        let space = ReadingTheme.find("space")
+        var easy = store.open(jobs)
+        for _ in 0..<6 { store.record(success: true, in: &easy, item: "Word") }
+        #expect(store.level(for: .words) == 1)
+        store.finish(&easy)
+
+        var medium = store.open(jobs)
+        #expect(medium.wordLevel == .medium)
+        #expect(medium.itemIndex == 0)
+        #expect(ReadLabLibrary.prompts(theme: jobs.id, level: medium.contentLevel).first?.text == "mechanic")
+        #expect(store.data.activities[jobs.id]?.session(at: .easy)?.completed == true)
+        store.record(success: true, in: &medium, item: "mechanic")
+        #expect(store.plannedSession(for: animals).wordLevel == .easy)
+        #expect(store.plannedSession(for: space).wordLevel == .easy)
+
+        medium.itemIndex = 2
+        store.update(medium)
+        _ = store.open(animals)
+        let restored = ReadLabStore(defaults: defaults)
+        #expect(restored.open(jobs) == medium)
+        restored.finish(&medium)
+        let hard = restored.open(jobs)
+        #expect(hard.wordLevel == .hard)
+        #expect(hard.itemIndex == 0)
+        #expect(restored.data.activities[jobs.id]?.session(at: .medium)?.completed == true)
+        #expect(restored.data.activities[jobs.id]?.lastCompleted(before: .hard) == .medium)
+        #expect(restored.data.activities[jobs.id]?.session(at: .easy)?.completed == true)
+    }
+
+    @Test func eachBookKeepsItsOwnSavedPage() throws {
+        let suite = "readlab.tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ReadLabStore(defaults: defaults)
+        let monkey = ReadingTheme.find("monkey-adventure")
+        let bird = ReadingTheme.find("poor-little-bird")
+        var session = store.open(monkey)
+        session.sectionIndex = 1
+        session.storyReading = .init(paragraphIndex: 1)
+        store.update(session)
+        #expect(store.open(bird).sectionIndex == 0)
+        let restored = ReadLabStore(defaults: defaults)
+        #expect(restored.open(monkey) == session)
+        let story = ReadLabLibrary.story(theme: monkey.id, level: session.contentLevel, age: session.storyAgeRange)
+        #expect(session.pagesRead(in: story) == 3)
+        session.furthestStoryPageRead = session.pagesRead(in: story)
+        session.storyReading = .init()
+        restored.update(session)
+        let rereading = ReadLabStore(defaults: defaults).open(monkey)
+        #expect(rereading.storyReading?.paragraphIndex == 0)
+        #expect(rereading.pagesRead(in: story) == 3)
     }
 
     @Test func speechRequiresTheWholePrompt() {

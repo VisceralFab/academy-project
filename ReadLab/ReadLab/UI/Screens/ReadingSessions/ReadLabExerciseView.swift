@@ -736,6 +736,10 @@ struct ReadLabExerciseView: View {
         VStack(spacing: 28) {
             Image(session.path.mascot).resizable().scaledToFit().frame(height: 200).accessibilityHidden(true)
             Text("A little practice. A big adventure.").readLabFont(40, weight: .semibold).multilineTextAlignment(.center)
+            if session.path != .stories {
+                Label("Level \(session.wordLevel.title) complete", systemImage: "checkmark.seal.fill")
+                    .readLabFont(17, weight: .semibold)
+            }
             Text("You explored \(theme.title). Every little effort helps you grow.")
                 .readLabFont(23, rounded: false).multilineTextAlignment(.center)
             ReadLabActionButton(title: "Back to Discoveries") { dismiss() }
@@ -758,7 +762,10 @@ struct ReadLabExerciseView: View {
             let item = prompt.text
             let changed = store.record(success: false, in: &session, item: item)
             if changed {
-                session.contentLevel = store.level(for: session.path)
+                store.update(session)
+                let easier = WordPracticeLevel(contentLevel: store.level(for: session.path))
+                session = store.wordSession(for: theme, level: easier)
+                preview = nil
                 syllablePosition = 0
                 feedback = "Let’s try a smaller step together."
             } else {
@@ -787,13 +794,12 @@ struct ReadLabExerciseView: View {
         preview = nil
         recognizedPromptIndex = nil
         guard !session.completed else { return }
-        if session.itemIndex >= 5 {
+        if session.itemIndex >= prompts.count - 1 {
             // Skipping every prompt is an exploration, not a completed practice activity.
             if session.practiced > 0 { store.finish(&session) }
             else { leaveExercise(); dismiss() }
         } else {
             session.itemIndex += 1
-            session.contentLevel = store.level(for: session.path)
             session.answeredCurrentItem = false
             syllablePosition = 0
             feedback = ""
@@ -804,6 +810,7 @@ struct ReadLabExerciseView: View {
         stopAudio()
         preview = nil
         audioRevision += 1
+        session.furthestStoryPageRead = session.pagesRead(in: story)
         if reading.paragraphIndex > 0 {
             session.storyReading = StoryReadingProgress(paragraphIndex: reading.paragraphIndex - 1)
         } else if session.sectionIndex > 0 {
@@ -834,6 +841,7 @@ struct ReadLabExerciseView: View {
                 session.contentLevel = store.level(for: session.path)
                 session.sectionIndex = 0
                 session.storyReading = StoryReadingProgress()
+                session.furthestStoryPageRead = nil
                 session.questionIndex = 0
                 session.showingQuestions = false
                 wrongOptions = []
