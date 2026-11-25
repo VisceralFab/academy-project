@@ -10,6 +10,7 @@ struct ReadLabExerciseView: View {
     @State private var syllablePosition = 0.0
     @State private var feedback = ""
     @State private var storySpeechCursor = StorySpeechCursor()
+    @State private var storySegmentMadeProgress = false
     @State private var wrongOptions: Set<Int> = []
     @State private var adultCheckPresented = false
     @State private var turningPage: PageTurn?
@@ -291,7 +292,8 @@ struct ReadLabExerciseView: View {
                 Button { requestPreview(prompt.text) } label: {
                     Text(prompt.text)
                         .readLabFont(compact ? 42 : 72, weight: .semibold)
-                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.4)
                         .foregroundStyle(session.answeredCurrentItem ? Color(red: 0.22, green: 0.43, blue: 0.28) : ReadLabStyle.ink)
                         .padding(8)
                         .frame(minHeight: 44)
@@ -643,8 +645,8 @@ struct ReadLabExerciseView: View {
             if let target {
                 await speech.listen(target: target, onResult: handleSpeech)
             } else {
-                storySpeechCursor = StorySpeechCursor()
-                await speech.listen(onNewSegment: { storySpeechCursor = StorySpeechCursor() }, onResult: handleStorySpeech)
+                resetStorySpeechSegment()
+                await speech.listen(onNewSegment: resetStorySpeechSegment, onResult: handleStorySpeech)
             }
             guard !Task.isCancelled, key == audioTaskID, speech.message == nil else { return }
             // Renew after silence. Avoid spinning if the audio route repeatedly stops immediately.
@@ -679,13 +681,27 @@ struct ReadLabExerciseView: View {
         try? await Task.sleep(for: .milliseconds(300))
     }
 
-    private func handleStorySpeech(_ text: String, _: Bool, _ alternatives: SpeechWordAlternatives) {
-        guard scenePhase == .active else { return }
+    private func resetStorySpeechSegment() {
+        storySpeechCursor = StorySpeechCursor()
+        storySegmentMadeProgress = false
+    }
+
+    private func handleStorySpeech(_ text: String, _ final: Bool, _ alternatives: SpeechWordAlternatives) {
+        guard scenePhase == .active, !session.completed, !session.showingQuestions, !reading.paragraphComplete else { return }
+        let previousWordCount = reading.wordCount
+        let paragraph = activeParagraph
         var cursor = storySpeechCursor
         let completedParagraphs = session.readStoryTranscript(text, cursor: &cursor, in: story, alternatives: alternatives)
         storySpeechCursor = cursor
+        if reading.wordCount > previousWordCount || !completedParagraphs.isEmpty {
+            storySegmentMadeProgress = true
+        }
         for paragraph in completedParagraphs {
-            _ = store.record(success: true, path: .stories, themeID: session.themeID, item: paragraph)
+            store.record(success: true, in: &session, item: paragraph)
+        }
+        // Partial results may already have advanced before the final transcription arrives.
+        if final && !storySegmentMadeProgress && !StoryText.words(in: text).isEmpty {
+            store.record(success: false, in: &session, item: paragraph)
         }
         if !completedParagraphs.isEmpty { requestSound(.correct) }
     }
@@ -732,13 +748,15 @@ struct ReadLabExerciseView: View {
         guard !session.answeredCurrentItem, !session.completed, scenePhase == .active else { return }
         if SpeechMatch.matches(text, target: prompt.text) {
             speech.cancel()
-            _ = store.record(success: true, path: session.path, themeID: session.themeID, item: prompt.text)
+            let item = prompt.text
+            store.record(success: true, in: &session, item: item)
             session.practiced += 1
             recognizedPromptIndex = session.itemIndex
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.4)) { session.answeredCurrentItem = true }
         } else if final, !SpeechMatch.normalized(text).isEmpty {
             speech.cancel()
-            let changed = store.record(success: false, path: session.path, themeID: session.themeID, item: prompt.text)
+            let item = prompt.text
+            let changed = store.record(success: false, in: &session, item: item)
             if changed {
                 session.contentLevel = store.level(for: session.path)
                 syllablePosition = 0
@@ -803,13 +821,15 @@ struct ReadLabExerciseView: View {
     private func answerQuestion(_ index: Int) {
         guard !session.answeredCurrentItem, !wrongOptions.contains(index) else { return }
         if index == question.answer {
-            _ = store.record(success: true, path: session.path, themeID: session.themeID, item: question.text)
+            let item = question.text
+            store.record(success: true, in: &session, item: item)
             session.answeredCurrentItem = true
             feedback = ""
             requestSound(.correct)
         } else {
             wrongOptions.insert(index)
-            let changed = store.record(success: false, path: session.path, themeID: session.themeID, item: question.text)
+            let item = question.text
+            let changed = store.record(success: false, in: &session, item: item)
             if session.storyAgeRange == nil, changed && store.level(for: session.path) < session.contentLevel {
                 session.contentLevel = store.level(for: session.path)
                 session.sectionIndex = 0

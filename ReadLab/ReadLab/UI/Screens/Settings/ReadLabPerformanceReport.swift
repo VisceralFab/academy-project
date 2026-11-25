@@ -75,11 +75,11 @@ enum ReadLabPerformanceReport {
                 rows: ReadingPath.allCases.map { path in
                     let t = data.totals[path.rawValue, default: .init()]
                     return [path.title,
-                            "\(data.difficulty[path.rawValue, default: .init()].level) of 5",
+                            "\(data.difficulty(for: path).level) of 5",
                             "\(t.completedActivities)", "\(t.attempts)", "\(t.successfulAnswers)",
                             rate(t.successfulAnswers, t.attempts)]
                 })
-        w.paragraph("Level adapts automatically (1 = easiest, 5 = hardest): three correct answers in a row move up, two misses move down.",
+        w.paragraph("The starting level is based on age (1 = easiest, 5 = hardest). Three correct answers in a row raise the level. Two misses in a row or two unfinished activities replaced after a miss lower it.",
                     font: .systemFont(ofSize: 9), color: ReportWriter.muted)
 
         // Per theme

@@ -188,8 +188,9 @@ struct ReadLabHomeView: View {
 
     private func storyPreview(wide: Bool, artworkSize: CGSize) -> some View {
         let inProgress = savedSession.flatMap { $0.themeID == suggestion.id ? $0 : nil }
-        let age: ReadLabAgeRange? = if let inProgress { inProgress.storyAgeRange } else { store.data.profile.ageRange ?? .fourFive }
-        let story = ReadLabLibrary.story(theme: suggestion.id, level: inProgress?.contentLevel ?? store.level(for: .stories), age: age)
+        let level = inProgress?.contentLevel ?? store.level(forStarting: suggestion)
+        let age: ReadLabAgeRange? = if let inProgress { inProgress.storyAgeRange } else { store.storyEdition(for: level) }
+        let story = ReadLabLibrary.story(theme: suggestion.id, level: level, age: age)
         return Button { begin(suggestion) } label: {
             ReadLabStoryArtwork(name: suggestion.cover, viewport: artworkSize)
                 .overlay(alignment: .top) {

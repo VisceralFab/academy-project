@@ -280,7 +280,11 @@ struct ReadLabPageTitle: View {
 
 struct ReadLabPrivacyCaption: View {
     var body: some View {
-        Text("Your child’s profile and reading progress are saved on this iPad. This app does not upload them.")
+        Text("""
+            Your child’s profile and reading progress are saved on this iPad.
+            ReadLab is an educational tool for reading practice. 
+            It is not a medical app and does not provide diagnosis or treatment.
+            """)
             .readLabFont(14, weight: .medium, rounded: false)
             .foregroundStyle(ReadLabStyle.ink.opacity(0.86))
             .multilineTextAlignment(.center)

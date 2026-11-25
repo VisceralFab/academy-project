@@ -70,6 +70,80 @@ struct ReadLabTests {
         #expect(difficulty.mistakes == 0)
     }
 
+    @Test func ageSetsStartingContentInEveryPath() throws {
+        let profiles: [(ReadLabAgeRange, Int, String, String)] = [
+            (.fourFive, 1, "sun", "baker"), (.sixSeven, 3, "galaxy", "mechanic"),
+            (.eightNine, 3, "galaxy", "mechanic"), (.tenPlus, 5, "astrophysics", "paleontologist")
+        ]
+        let suite = "readlab.tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for (age, level, hearingWord, firstWord) in profiles {
+            let store = ReadLabStore(defaults: defaults)
+            store.data = ReadLabData()
+            store.data.profile.ageRange = age
+            let hearing = store.start(path: .hearing, theme: ReadingTheme.find("space"))
+            let words = store.start(path: .words, theme: ReadingTheme.find("jobs"))
+            let story = store.start(path: .stories, theme: ReadingTheme.find("monkey-adventure"))
+            #expect(hearing.contentLevel == level)
+            #expect(words.contentLevel == level)
+            #expect(story.contentLevel == level)
+            #expect(ReadLabLibrary.prompts(theme: hearing.themeID, level: hearing.contentLevel).first?.text == hearingWord)
+            #expect(ReadLabLibrary.prompts(theme: words.themeID, level: words.contentLevel).first?.text == firstWord)
+            #expect(story.storyAgeRange == age)
+        }
+    }
+
+    @Test func adaptationPersistsAndDoesNotChangeAnOpenStoryEdition() throws {
+        let suite = "readlab.tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ReadLabStore(defaults: defaults)
+        store.data.profile.ageRange = .tenPlus
+        var story = store.start(path: .stories, theme: ReadingTheme.find("monkey-adventure"))
+        store.record(success: false, in: &story, item: "First reading attempt")
+        store.record(success: false, in: &story, item: "Second reading attempt")
+        store.update(story)
+        let restored = ReadLabStore(defaults: defaults)
+        #expect(restored.level(for: .stories) == 4)
+        #expect(restored.level(for: .hearing) == 5)
+        #expect(restored.session(for: .stories)?.storyAgeRange == .tenPlus)
+        let next = restored.start(path: .stories, theme: ReadingTheme.find("poor-little-bird"))
+        #expect(next.contentLevel == 4)
+        #expect(next.storyAgeRange == .eightNine)
+    }
+
+    @Test func replacingTwoStrugglingActivitiesLowersLevelButBrowsingAndResumingDoNot() throws {
+        let suite = "readlab.tests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ReadLabStore(defaults: defaults)
+        store.data.profile.ageRange = .tenPlus
+        let space = ReadingTheme.find("space")
+        let nature = ReadingTheme.find("nature")
+        _ = store.start(path: .hearing, theme: space)
+        _ = store.start(path: .hearing, theme: nature)
+        var session = store.start(path: .hearing, theme: space)
+        #expect(session.contentLevel == 5)
+        store.record(success: false, in: &session, item: "astrophysics")
+        store.update(session)
+        #expect(store.session(for: .hearing) == session)
+        #expect(store.level(for: .hearing) == 5)
+
+        var replacement = store.start(path: .hearing, theme: nature)
+        #expect(replacement.contentLevel == 5)
+        store.record(success: true, in: &replacement, item: "photosynthesis")
+        store.record(success: false, in: &replacement, item: "metamorphosis")
+        store.update(replacement)
+
+        let restored = ReadLabStore(defaults: defaults)
+        #expect(restored.level(forStarting: space) == 4)
+        #expect(restored.level(for: .hearing) == 5)
+        #expect(restored.start(path: .hearing, theme: space).contentLevel == 4)
+        #expect(restored.level(for: .words) == 5)
+        #expect(restored.data.totals[ReadingPath.hearing.rawValue]?.attempts == 3)
+    }
+
     @Test func speechRequiresTheWholePrompt() {
         #expect(SpeechMatch.matches("THE moon shines at night!", target: "The moon shines at night."))
         #expect(SpeechMatch.matches("  Rabbit. ", target: "rabbit"))

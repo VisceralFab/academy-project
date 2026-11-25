@@ -20,6 +20,53 @@ final class ReadLabUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
     }
 
+    func testTenPlusVocabularyFitsOnOneLineWithBothFonts() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitesting", "--reset-journey"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 15))
+        app.buttons["Get Started"].tap()
+        let name = app.textFields["Child name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText("Luca\n")
+        app.buttons["ageRange-10+"].tap()
+        app.buttons["Continue"].tap()
+        XCTAssertTrue(app.buttons["diagnosis-none"].waitForExistence(timeout: 5))
+        app.buttons["diagnosis-none"].tap()
+        app.buttons["Continue"].tap()
+        let hearing = app.buttons["readingPath-hearing"]
+        XCTAssertTrue(hearing.waitForExistence(timeout: 5))
+        hearing.tap()
+        app.buttons["Continue"].tap()
+        XCTAssertTrue(app.buttons["Let’s Begin"].waitForExistence(timeout: 5))
+        app.buttons["Let’s Begin"].tap()
+        XCTAssertTrue(app.buttons["startMissionButton"].waitForExistence(timeout: 5))
+        app.buttons["startMissionButton"].tap()
+        let prompt = app.buttons["readingPrompt"]
+        XCTAssertTrue(prompt.waitForExistence(timeout: 5))
+        XCTAssertEqual(prompt.label, "Listen to astrophysics")
+        app.buttons["closeActivityButton"].tap()
+        changePath("First words", app: app)
+        app.buttons["startMissionButton"].tap()
+        assertSingleSyllableRow("paleontologist", app: app)
+        capture("first-words-long-word-system", app: app)
+
+        app.buttons["closeActivityButton"].tap()
+        app.buttons["accountButton"].tap()
+        let dyslexicFont = app.switches["Use OpenDyslexic Bold"]
+        XCTAssertTrue(dyslexicFont.waitForExistence(timeout: 5))
+        if !dyslexicFont.isHittable { app.swipeUp() }
+        dyslexicFont.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        let fontEnabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "1"), object: dyslexicFont)
+        XCTAssertEqual(XCTWaiter.wait(for: [fontEnabled], timeout: 5), .completed)
+        app.buttons["Done"].tap()
+        app.buttons["resumeSessionButton"].tap()
+        assertSingleSyllableRow("paleontologist", app: app)
+        capture("first-words-long-word-opendyslexic", app: app)
+    }
+
     func testCompleteJourneyAndResumeAllThreePaths() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
@@ -270,6 +317,21 @@ final class ReadLabUITests: XCTestCase {
         let button = app.buttons[title]
         XCTAssertTrue(button.wait(for: \.isEnabled, toEqual: true, timeout: 5))
         button.tap()
+    }
+
+    private func assertSingleSyllableRow(_ expected: String, app: XCUIApplication) {
+        let slider = app.sliders["Syllable focus"]
+        XCTAssertTrue(slider.waitForExistence(timeout: 5))
+        let word = app.descendants(matching: .any)["readingPrompt"].firstMatch
+        XCTAssertEqual(app.sliders.count, 1)
+        XCTAssertEqual(word.label.filter(\.isLetter), expected)
+        let track = slider.frame
+        XCTAssertEqual(word.frame.midX, track.midX, accuracy: 8)
+        for position in [0.5, 1] {
+            slider.adjust(toNormalizedSliderPosition: position)
+            XCTAssertEqual(slider.frame.width, track.width, accuracy: 1)
+            XCTAssertEqual(word.label.filter(\.isLetter), expected)
+        }
     }
 
     private func confirmParagraphWithGrownUp(app: XCUIApplication) {

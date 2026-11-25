@@ -45,6 +45,21 @@ struct ReadLabChildProfile: Equatable, Codable {
 enum ReadLabAgeRange: String, CaseIterable, Identifiable, Codable {
     case fourFive = "4–5", sixSeven = "6–7", eightNine = "8–9", tenPlus = "10+"
     var id: String { rawValue }
+
+    var startingLevel: Int {
+        switch self {
+        case .fourFive: 1
+        case .sixSeven, .eightNine: 3
+        case .tenPlus: 5
+        }
+    }
+
+    func storyEdition(at level: Int) -> Self {
+        let editions = Self.allCases
+        let startingEdition = editions.firstIndex(of: self) ?? 0
+        let index = startingEdition + level - startingLevel
+        return editions[min(editions.count - 1, max(0, index))]
+    }
 }
 
 enum ReadLabReadingFamiliarity: String, CaseIterable, Identifiable, Codable {
@@ -77,11 +92,16 @@ enum ReadLabDiagnosis: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-/// The learning engine uses practice outcomes, never age or a reported diagnosis.
+/// Age sets the initial level. Practice then adapts it independently for each path.
 struct AdaptiveDifficulty: Codable, Equatable {
-    private(set) var level = 1
+    private(set) var level: Int
     private(set) var successStreak = 0
     private(set) var mistakes = 0
+    private var abandonedActivities: Int?
+
+    init(level: Int = 1) {
+        self.level = level
+    }
 
     @discardableResult
     mutating func record(success: Bool) -> Bool {
@@ -101,7 +121,24 @@ struct AdaptiveDifficulty: Codable, Equatable {
                 mistakes = 0
             }
         }
+        if previous != level { resetAbandonments() }
         return previous != level
+    }
+
+    mutating func recordAbandonment() {
+        let count = (abandonedActivities ?? 0) + 1
+        if count >= 2 {
+            level = max(1, level - 1)
+            mistakes = 0
+            successStreak = 0
+            resetAbandonments()
+        } else {
+            abandonedActivities = count
+        }
+    }
+
+    mutating func resetAbandonments() {
+        abandonedActivities = nil
     }
 }
 
@@ -120,6 +157,8 @@ struct PracticeSession: Codable, Equatable, Identifiable {
     var contentLevel = 1
     // Nil identifies older sessions that must retain their original text and quiz.
     var storyAgeRange: ReadLabAgeRange?
+    // Only replacements of an unfinished activity with a recorded miss count as abandonments.
+    var hadDifficulty: Bool?
     var practiced = 0
     var progress: Double { completed ? 1 : min(0.95, Double(itemIndex) / 6) }
 }
@@ -162,6 +201,12 @@ struct ReadLabData: Codable, Equatable {
     var totals: [String: PracticeTotals] = [:]
     var exerciseLog: [ExerciseRecord] = []
     static let maxLogEntries = 3000
+
+    var startingAge: ReadLabAgeRange { profile.ageRange ?? .fourFive }
+
+    func difficulty(for path: ReadingPath) -> AdaptiveDifficulty {
+        difficulty[path.rawValue] ?? AdaptiveDifficulty(level: startingAge.startingLevel)
+    }
 }
 
 extension ReadLabData {
@@ -198,23 +243,55 @@ final class ReadLabStore {
         } else { data = ReadLabData() }
     }
 
-    func level(for path: ReadingPath) -> Int { data.difficulty[path.rawValue, default: .init()].level }
-    func session(for path: ReadingPath) -> PracticeSession? { data.sessions[path.rawValue] }
+    func level(for path: ReadingPath) -> Int { data.difficulty(for: path).level }
+    func level(forStarting theme: ReadingTheme) -> Int {
+        difficultyAfterReplacingSession(path: theme.path, themeID: theme.id)?.level ?? level(for: theme.path)
+    }
+    func storyEdition(for level: Int) -> ReadLabAgeRange { data.startingAge.storyEdition(at: level) }
+
+    func session(for path: ReadingPath) -> PracticeSession? {
+        guard var session = data.sessions[path.rawValue] else { return nil }
+        // An unattempted word exercise saved before age-based levels may still contain level 1.
+        if path != .stories, data.difficulty[path.rawValue] == nil, !session.completed,
+           session.itemIndex == 0, session.practiced == 0, !session.answeredCurrentItem {
+            session.contentLevel = level(for: path)
+        }
+        return session
+    }
 
     func start(path: ReadingPath, theme: ReadingTheme) -> PracticeSession {
+        if let difficulty = difficultyAfterReplacingSession(path: path, themeID: theme.id) {
+            data.difficulty[path.rawValue] = difficulty
+        }
         var session = PracticeSession(path: path, themeID: theme.id, contentLevel: level(for: path))
         if ReadLabIllustratedStories.themes.contains(theme) {
-            session.storyAgeRange = data.profile.ageRange ?? .fourFive
+            session.storyAgeRange = storyEdition(for: session.contentLevel)
         }
         update(session)
         return session
     }
 
+    private func difficultyAfterReplacingSession(path: ReadingPath, themeID: String) -> AdaptiveDifficulty? {
+        guard let previous = session(for: path), previous.themeID != themeID,
+              !previous.completed, previous.hadDifficulty == true else { return nil }
+        var difficulty = data.difficulty(for: path)
+        difficulty.recordAbandonment()
+        return difficulty
+    }
+
     func update(_ session: PracticeSession) { data.sessions[session.path.rawValue] = session }
 
     @discardableResult
+    func record(success: Bool, in session: inout PracticeSession, item: String) -> Bool {
+        let changed = record(success: success, path: session.path, themeID: session.themeID, item: item)
+        // A correct response or a downgrade already resolved the most recent difficulty.
+        session.hadDifficulty = !success && !changed ? true : nil
+        return changed
+    }
+
+    @discardableResult
     func record(success: Bool, path: ReadingPath, themeID: String = "", item: String = "") -> Bool {
-        var difficulty = data.difficulty[path.rawValue, default: .init()]
+        var difficulty = data.difficulty(for: path)
         let levelBefore = difficulty.level
         let changed = difficulty.record(success: success)
         data.difficulty[path.rawValue] = difficulty
@@ -238,6 +315,9 @@ final class ReadLabStore {
         guard !session.completed else { return }
         session.completed = true
         update(session)
+        if data.difficulty[session.path.rawValue] != nil {
+            data.difficulty[session.path.rawValue]?.resetAbandonments()
+        }
         if data.preferences.trackReadingProgress {
             data.totals[session.path.rawValue, default: .init()].completedActivities += 1
             log(.init(path: session.path, themeID: session.themeID, item: "", outcome: .completed, level: session.contentLevel))
